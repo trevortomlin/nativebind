@@ -1,0 +1,6 @@
+tags:
+  perf:
+    # Latency/throughput budgets. Run alone: flutter test --tags perf
+    timeout: 3x
+  integration:
+    # Loads the real native library (built with CMake on first run).

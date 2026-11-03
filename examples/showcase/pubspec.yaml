@@ -1,0 +1,21 @@
+name: nativebind_showcase
+description: "nativebind example: a counter, a simulated media player and background downloads, each a single C++ file."
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  nativebind: ^0.1.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+  nativebind_generator: ^0.1.0
+
+flutter:
+  uses-material-design: true

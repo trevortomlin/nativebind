@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  native:
+    name: C++ runtime (${{ matrix.compiler }}, ${{ matrix.sanitize }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        sanitize: ["address,undefined", "thread"]
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build and test
+        working-directory: packages/nativebind/native
+        env:
+          CC: ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }}
+          CXX: ${{ matrix.compiler == 'clang' && 'clang++' || 'g++' }}
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DNATIVEBIND_SANITIZE=${{ matrix.sanitize }}
+          cmake --build build
+          ./build/tests/nativebind_tests
+
+  dart:
+    name: Generator, Dart runtime and example
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build clang cmake pkg-config libgtk-3-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generator
+        working-directory: packages/nativebind_generator
+        run: |
+          dart pub get
+          dart analyze --fatal-infos
+          dart test --exclude-tags perf
+      - name: Dart runtime
+        working-directory: packages/nativebind
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test --exclude-tags perf
+      - name: Example
+        working-directory: examples/showcase
+        run: |
+          flutter pub get
+          dart run nativebind_generator --check
+          flutter analyze
+          flutter test
+          flutter build linux --debug

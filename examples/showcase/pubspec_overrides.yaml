@@ -1,0 +1,7 @@
+# Use the packages from this repository. Delete this file in your own app and
+# depend on published versions instead.
+dependency_overrides:
+  nativebind:
+    path: ../../packages/nativebind
+  nativebind_generator:
+    path: ../../packages/nativebind_generator

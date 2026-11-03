@@ -1,0 +1,21 @@
+# Build output
+build/
+.dart_tool/
+.packages
+*.iml
+.idea/
+.vscode/
+.cache/
+compile_commands.json
+
+# Packages: lock files are not committed (examples keep theirs)
+packages/*/pubspec.lock
+
+# Flutter tooling
+.flutter-plugins
+.flutter-plugins-dependencies
+**/linux/flutter/ephemeral/
+
+# Editors and OS
+*.swp
+.DS_Store

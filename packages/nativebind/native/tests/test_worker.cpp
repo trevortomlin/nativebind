@@ -1,0 +1,203 @@
+#include <atomic>
+#include <chrono>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include "feed.hpp"
+#include "harness.hpp"
+#include "modules/device.cpp"  // class definitions only (all inline), safe to include
+#include "modules/thermo.cpp"  // class definitions only (all inline), safe to include
+
+using namespace nativebind;
+using namespace std::chrono_literals;
+
+namespace {
+
+bool waitFor(const std::function<bool()>& cond, std::chrono::milliseconds timeout = 3s) {
+    const auto end = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < end) {
+        if (cond()) return true;
+        std::this_thread::sleep_for(1ms);
+    }
+    return cond();
+}
+
+}  // namespace
+
+TEST(worker_runs_tasks_in_order_on_its_thread) {
+    Worker w("test-worker");
+    std::vector<int> seen;
+    std::atomic<bool> allOnThread{true};
+    for (int i = 0; i < 100; ++i)
+        w.post([&, i] {
+            if (!w.onThread()) allOnThread = false;
+            seen.push_back(i);
+        });
+    std::atomic<bool> done{false};
+    w.post([&] { done = true; });
+    CHECK(waitFor([&] { return done.load(); }));
+    CHECK(allOnThread.load());
+    CHECK_EQ(seen.size(), size_t{100});
+    for (int i = 0; i < 100; ++i) CHECK_EQ(seen[static_cast<size_t>(i)], i);
+    CHECK(!w.onThread());
+}
+
+TEST(worker_periodic_jobs_and_cancel) {
+    Worker w;
+    std::atomic<int> fast{0}, cancelled{0};
+    w.every(2ms, [&] { ++fast; }, true);
+    const auto id = w.every(1ms, [&] { ++cancelled; });
+    w.cancel(id);
+    CHECK(waitFor([&] { return fast.load() >= 5; }));
+    w.stop();
+    const int after = fast.load();
+    std::this_thread::sleep_for(10ms);
+    CHECK_EQ(fast.load(), after);  // nothing runs after stop
+    CHECK(cancelled.load() <= 1);
+}
+
+TEST(worker_survives_exceptions_and_stops_long_loops) {
+    setLogHandler([](const char*) {});
+    Worker w;
+    std::atomic<bool> after{false};
+    w.post([] { throw std::runtime_error("bus error"); });
+    w.post([&] { after = true; });
+    CHECK(waitFor([&] { return after.load(); }));
+    setLogHandler(nullptr);
+
+    std::atomic<bool> exited{false};
+    w.post([&] {
+        while (w.sleepFor(1h)) {
+        }
+        exited = true;  // sleepFor returned false because of stop()
+    });
+    std::this_thread::sleep_for(5ms);
+    const auto t0 = std::chrono::steady_clock::now();
+    w.stop();
+    CHECK(exited.load());
+    CHECK(std::chrono::steady_clock::now() - t0 < 1s);
+    w.stop();  // idempotent
+}
+
+TEST(worker_restarts_after_stop) {
+    Worker w;
+    std::atomic<int> n{0};
+    w.post([&] { ++n; });
+    CHECK(waitFor([&] { return n.load() == 1; }));
+    w.stop();
+    w.post([&] { ++n; });
+    CHECK(waitFor([&] { return n.load() == 2; }));
+}
+
+TEST(ui_writes_are_forwarded_to_the_io_thread) {
+    feed::Started s;
+    feed::Consumer c;
+    c.pump();
+    auto& dev = singleton<Device>();
+    auto v = feed::encode(42.0);
+    CHECK_EQ(nativebind_write(dev.handle(), 3, v.data(), static_cast<uint32_t>(v.size()), 1), NATIVEBIND_OK);
+    CHECK(waitFor([&] { return dev.written.get() == 42.0; }));
+}
+
+TEST(batches_are_never_seen_half_applied) {
+    feed::Started s;
+    feed::Consumer c;
+    c.pump();
+    auto& dev = singleton<Device>();
+    CHECK_EQ(nativebind_invoke(dev.handle(), 0, nullptr, 0, 1), NATIVEBIND_OK);  // startPolling
+    int checked = 0;
+    const auto end = std::chrono::steady_clock::now() + 300ms;
+    while (std::chrono::steady_clock::now() < end) {
+        c.pump();
+        const auto* inst = c.mirror.find(dev.handle());
+        CHECK(inst != nullptr);
+        const auto& a = inst->props.at(0).value;
+        const auto& b = inst->props.at(1).value;
+        CHECK_EQ(a.i + b.i, int64_t{100});
+        ++checked;
+    }
+    CHECK(checked > 10);
+    CHECK(dev.polls.get() > 10);
+}
+
+TEST(nested_batches_and_batches_without_a_consumer) {
+    feed::Started s;
+    auto& th = singleton<Thermo>();
+    {
+        Batch outer;
+        {
+            Batch inner;
+            th.roomTemp = 1.0;
+        }
+        th.roomTemp = 2.0;
+    }
+    nativebind::batch([&] { th.roomTemp = 3.0; });
+    feed::Consumer c;
+    c.pump();  // would deadlock if a batch leaked its lock
+    CHECK_EQ(c.mirror.find(th.handle())->props.at(4).value.d, 3.0);
+}
+
+TEST(property_lookup_by_name) {
+    feed::Started s;
+    auto& sp = nativebind::property<double>("Thermo", "setpoint");
+    CHECK(&sp == &singleton<Thermo>().setpoint);
+    CHECK_THROWS(nativebind::property<int32_t>("Thermo", "setpoint"), std::logic_error);  // wrong type
+    CHECK_THROWS(nativebind::property<double>("Thermo", "nope"), std::logic_error);
+    CHECK_THROWS(nativebind::property<double>("Nope", "setpoint"), std::logic_error);
+
+    spawn<Zone>(7, "Lab");
+    CHECK_EQ(nativebind::property<std::string>("Zone", "label", 7).get(), std::string("Lab"));
+    CHECK_THROWS(nativebind::property<std::string>("Zone", "label", 8), std::logic_error);
+}
+
+TEST(stopping_the_runtime_stops_polling_workers) {
+    int stops = 0;
+    {
+        feed::Started s;
+        auto& dev = singleton<Device>();
+        CHECK_EQ(nativebind_invoke(dev.handle(), 0, nullptr, 0, 1), NATIVEBIND_OK);
+        CHECK(waitFor([&] { return dev.polls.get() > 5; }));
+        stops = dev.onStopCalls.load();
+    }
+    CHECK_EQ(stops, 0);  // checked before stop; ASan/TSan verify the shutdown itself
+}
+
+TEST(stress_workers_batches_and_writes_together) {
+    feed::Started s;
+    feed::Consumer c;
+    c.pump();
+    auto& dev = singleton<Device>();
+    auto& th = singleton<Thermo>();
+    nativebind_invoke(dev.handle(), 0, nullptr, 0, 1);
+    std::atomic<bool> done{false};
+    std::thread consumer([&] {
+        while (!done) {
+            c.pump();
+            const auto* inst = c.mirror.find(dev.handle());
+            if (inst && inst->props.count(0) && inst->props.count(1)) {
+                if (inst->props.at(0).value.i + inst->props.at(1).value.i != 100) std::abort();
+            }
+        }
+    });
+    std::vector<std::thread> writers;
+    for (int t = 0; t < 3; ++t)
+        writers.emplace_back([&, t] {
+            Worker w("writer-" + std::to_string(t));
+            std::atomic<int> left{500};
+            for (int i = 0; i < 500; ++i)
+                w.post([&, i] {
+                    nativebind::batch([&] { th.roomTemp = i; });
+                    auto v = feed::encode(static_cast<double>(i % 90));
+                    nativebind_write(dev.handle(), 3, v.data(), static_cast<uint32_t>(v.size()), static_cast<uint32_t>(i));
+                    --left;
+                });
+            while (left > 0) std::this_thread::sleep_for(1ms);
+        });
+    for (auto& w : writers) w.join();
+    done = true;
+    consumer.join();
+    c.settle();
+    CHECK_EQ(c.mirror.gaps, 0);
+}
