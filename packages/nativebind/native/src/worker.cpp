@@ -43,6 +43,16 @@ Worker::~Worker() {
 
 void Worker::start() {
     std::lock_guard g(mutex_);
+    stopped_ = false;  // explicitly resumed
+    startLocked();
+}
+
+void Worker::startIfIdle() {
+    std::lock_guard g(mutex_);
+    if (!stopped_) startLocked();
+}
+
+void Worker::startLocked() {
     if (running_ || ended_) return;
     running_ = true;
     stopping_ = false;
@@ -58,6 +68,7 @@ void Worker::start() {
 void Worker::stop() {
     {
         std::lock_guard g(mutex_);
+        stopped_ = true;  // later post/every are dropped until start()
         if (!running_) return;
         if (onThread()) throw std::logic_error("nativebind::Worker::stop() called on the worker itself");
         stopping_ = true;
@@ -79,7 +90,7 @@ bool Worker::running() const {
 bool Worker::onThread() const noexcept { return std::this_thread::get_id() == threadId_.load(); }
 
 void Worker::post(std::function<void()> task) {
-    start();
+    startIfIdle();
     {
         std::lock_guard g(mutex_);
         if (stopping_ || !running_) return;
@@ -90,12 +101,12 @@ void Worker::post(std::function<void()> task) {
 
 uint64_t Worker::every(std::chrono::milliseconds period, std::function<void()> task, bool runNow) {
     if (period.count() <= 0) throw std::invalid_argument("nativebind::Worker::every: period must be positive");
-    start();
+    startIfIdle();
     uint64_t id;
     {
         std::lock_guard g(mutex_);
         id = nextId_++;
-        if (!running_) return id;  // owner ended: never runs
+        if (!running_) return id;  // stopped, or the owner ended: never runs
         periodic_[id] = Periodic{Clock::now() + (runNow ? std::chrono::milliseconds(0) : period), period,
                                  std::make_shared<std::function<void()>>(std::move(task))};
     }
@@ -138,8 +149,13 @@ void Worker::run() {
             lk.lock();
             continue;
         }
-        if (next != periodic_.end()) cv_.wait_until(lk, next->second.due);
-        else cv_.wait(lk);
+        if (next != periodic_.end()) {
+            // A copy: the wait releases the lock, and cancel() may free the job.
+            const Clock::time_point due = next->second.due;
+            cv_.wait_until(lk, due);
+        } else {
+            cv_.wait(lk);
+        }
     }
 }
 
