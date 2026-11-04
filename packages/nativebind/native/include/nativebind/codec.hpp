@@ -6,6 +6,7 @@
 // (fields encoded by generated code), std::vector<T>, std::optional<T>,
 // std::chrono::system_clock::time_point and std::chrono::duration.
 
+#include <atomic>
 #include <bit>
 #include <chrono>
 #include <cstdint>
@@ -121,6 +122,21 @@ struct StructCodec {
 void registerStructCodec(std::type_index type, const StructCodec& codec);
 /// Throws std::logic_error if `type` was never registered.
 const StructCodec& structCodec(std::type_index type);
+
+/// The codec of T, looked up in the registry once. The registry locks and
+/// hashes the type name, which every encode of every list element paid, and
+/// serialized threads encoding at once. Entries never move, so the pointer
+/// stays valid; a failed lookup is not cached.
+template <class T>
+inline std::atomic<const StructCodec*> cachedStructCodec{nullptr};
+
+template <class T>
+const StructCodec& structCodecOf() {
+    if (const StructCodec* c = cachedStructCodec<T>.load(std::memory_order_acquire)) return *c;
+    const StructCodec& c = structCodec(typeid(T));
+    cachedStructCodec<T>.store(&c, std::memory_order_release);
+    return c;
+}
 
 }  // namespace detail
 
@@ -283,7 +299,7 @@ void Writer::value(const T& v) {
         tag(Tag::Duration);
         i64(detail::toMicros(v));
     } else if constexpr (std::is_class_v<U>) {
-        detail::structCodec(typeid(U)).encode(*this, &v);
+        detail::structCodecOf<U>().encode(*this, &v);
     } else {
         static_assert(detail::always_false<U>,
                       "nativebind: this type cannot cross the binding. Use bool, an integer, double, std::string, "
@@ -337,7 +353,7 @@ T Reader::value() {
     } else if constexpr (std::is_class_v<U>) {
         static_assert(std::is_default_constructible_v<U>, "nativebind: structs that cross the binding need a default constructor");
         U out{};
-        detail::structCodec(typeid(U)).decode(*this, &out);
+        detail::structCodecOf<U>().decode(*this, &out);
         return out;
     } else {
         static_assert(detail::always_false<U>, "nativebind: this type cannot be decoded");

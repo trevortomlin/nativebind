@@ -19,6 +19,10 @@ break the API).
 
 ### Changed
 
+- Struct values are encoded and decoded about twice as fast, and threads
+  encoding structs at once no longer serialize on a global lock (4 threads:
+  ~650 ns per encode before, ~50 ns now): each struct type looks its codec
+  up once.
 - `BoundList.value` and `BoundInstances.value` are unmodifiable snapshots
   (cached until the next change) instead of live views, so a value kept to
   compare later still holds what it held when read. Indexing the list itself

@@ -195,6 +195,35 @@ int main(int argc, char** argv) {
                    (void)rd.value<Reading>();
                }),
                "ns", 700);
+        const std::vector<Reading> many(1000, r);
+        report("encode list of 1000 structs", measure(2000, [&] {
+                   buf.clear();
+                   Writer w(buf);
+                   w.value(many);
+               }),
+               "us", 400);
+        constexpr int threads = 4, per = 200000;
+        std::vector<double> ns;
+        for (int round = 0; round < 5; ++round) {
+            std::atomic<bool> go{false};
+            std::vector<std::thread> ts;
+            for (int t = 0; t < threads; ++t)
+                ts.emplace_back([&] {
+                    std::vector<uint8_t> local;
+                    while (!go) std::this_thread::yield();
+                    for (int i = 0; i < per; ++i) {
+                        local.clear();
+                        Writer w(local);
+                        w.value(r);
+                    }
+                });
+            const auto t0 = Clock::now();
+            go = true;
+            for (auto& t : ts) t.join();
+            ns.push_back(std::chrono::duration<double, std::nano>(Clock::now() - t0).count() / per);
+        }
+        std::sort(ns.begin(), ns.end());
+        report("encode struct, 4 threads at once (per encode)", ns[2], "ns", 500);
     }
 
     // ---- round trips through the C ABI (what a touch costs end to end, minus Flutter)
