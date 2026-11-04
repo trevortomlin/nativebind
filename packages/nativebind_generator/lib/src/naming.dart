@@ -18,6 +18,17 @@ const dartBuiltIn = {
 /// Members every Dart object has.
 const objectMembers = {'hashCode', 'runtimeType', 'toString', 'noSuchMethod'};
 
+/// Members a generated module proxy inherits from ModuleProxy (besides the
+/// `$`-prefixed ones): a C++ member of that name gets a `_` suffix.
+const moduleProxyMembers = {'isAlive'};
+
+/// dart:core types the generated code refers to. A generated type of the same
+/// name would hide them from the generated code (and from app code that
+/// imports it).
+const dartCoreTypesUsed = {
+  'bool', 'int', 'double', 'num', 'String', 'List', 'DateTime', 'Duration', 'Object', 'Future', 'Null', 'Never',
+};
+
 List<String> _words(String s) {
   s = s.replaceAll(RegExp(r'^_+|_+$'), '');
   final out = <String>[];
@@ -43,6 +54,13 @@ String dartMember(String cpp) {
   final w = _words(cpp);
   if (w.isEmpty) return _safe(cpp);
   return _safe(w.first + w.skip(1).map(_cap).join());
+}
+
+/// A module member's Dart name: [dartMember], with a `_` suffix for the
+/// names a generated proxy inherits from ModuleProxy.
+String dartModuleMember(String cpp) {
+  final d = dartMember(cpp);
+  return moduleProxyMembers.contains(d) ? '${d}_' : d;
 }
 
 /// media_player, MediaPlayer -> MediaPlayer
@@ -136,20 +154,28 @@ String humanLabel(String cpp) {
 }
 
 /// Splits `@label Text` out of a doc comment: (label or null, remaining doc).
-(String?, String?) labelFromDoc(String? doc) {
+(String?, String?) labelFromDoc(String? doc) => annotationFromDoc(doc, 'label');
+
+/// Splits `@dart Name` out of a type's doc comment: (Dart name or null,
+/// remaining doc).
+(String?, String?) dartNameFromDoc(String? doc) => annotationFromDoc(doc, 'dart');
+
+/// Splits the first `@<tag> value` line out of a doc comment.
+(String?, String?) annotationFromDoc(String? doc, String tag) {
   if (doc == null) return (null, null);
-  String? label;
+  String? value;
   final rest = <String>[];
+  final re = RegExp('^\\s*@$tag\\s+(.+?)\\s*\$');
   for (final line in doc.split('\n')) {
-    final m = RegExp(r'^\s*@label\s+(.+?)\s*$').firstMatch(line);
-    if (m != null && label == null) {
-      label = m.group(1);
+    final m = re.firstMatch(line);
+    if (m != null && value == null) {
+      value = m.group(1);
     } else {
       rest.add(line);
     }
   }
   final text = rest.join('\n').trim();
-  return (label, text.isEmpty ? null : text);
+  return (value, text.isEmpty ? null : text);
 }
 
 /// Doc comment text as runtime help: single line breaks become spaces,

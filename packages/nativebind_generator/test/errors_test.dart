@@ -115,4 +115,20 @@ class M {
     })();
     expect(e.toString(), contains('two modules are named M'));
   });
+
+  test('a type named like a dart:core type the generated code uses', () {
+    expectError(module('    NATIVEBIND_READ(Duration, d, {})', prelude: 'struct Duration { int ticks = 0; };'),
+        '`Duration` would be `Duration` in Dart, hiding the dart:core `Duration`',
+        line: 2, hint: '@dart');
+    expectError(module('    NATIVEBIND_READ(S, s, {})', prelude: '/// @dart String\nstruct S { int x = 0; };'),
+        '`S` would be `String` in Dart');
+    expectError(module('    NATIVEBIND_PROP(int, x, 0)', name: 'Future'), '`Future` would be `Future` in Dart', hint: 'rename it');
+  });
+
+  test('a @dart name that is not a Dart type name', () {
+    expectError(module('    NATIVEBIND_READ(S, s, {})', prelude: '/// @dart not-a-name\nstruct S { int x = 0; };'),
+        '`@dart not-a-name` is not a valid Dart type name');
+    expectError(module('    NATIVEBIND_READ(S, s, {})', prelude: '/// @dart class\nstruct S { int x = 0; };'),
+        '`@dart class` is not a valid Dart type name');
+  });
 }

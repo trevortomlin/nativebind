@@ -11,10 +11,10 @@ class DartNames {
   final _types = <Object, String>{}; // EnumDecl/StructDecl -> Dart name
   final _owners = <String, Object>{};
 
-  String typeName(Object decl, String cppName, SourceLoc loc) {
+  String typeName(Object decl, String cppName, SourceLoc loc, String? doc) {
     final existing = _types[decl];
     if (existing != null) return existing;
-    final n = dartType(cppName);
+    final n = dartTypeNameOf(cppName, doc, loc);
     final other = _owners[n];
     if (other != null && other != decl) {
       throw GeneratorException(loc, 'two types would both be called `$n` in Dart',
@@ -24,6 +24,28 @@ class DartNames {
     _types[decl] = n;
     return n;
   }
+}
+
+/// The Dart name of a C++ enum or struct: `/// @dart Name` in its doc
+/// comment, or its C++ name in Dart style.
+String dartTypeNameOf(String cppName, String? doc, SourceLoc loc) {
+  final (rename, _) = dartNameFromDoc(doc);
+  if (rename != null) {
+    if (!RegExp(r'^[A-Za-z][A-Za-z0-9_]*$').hasMatch(rename) || dartReserved.contains(rename) || dartBuiltIn.contains(rename)) {
+      throw GeneratorException(loc, '`@dart $rename` is not a valid Dart type name');
+    }
+  }
+  final n = rename ?? dartType(cppName);
+  checkNotCoreType(n, cppName, loc, renamable: true);
+  return n;
+}
+
+/// A generated type named like a dart:core type the generated code uses
+/// would hide it, and the generated Dart would not compile.
+void checkNotCoreType(String dartName, String cppName, SourceLoc loc, {required bool renamable}) {
+  if (!dartCoreTypesUsed.contains(dartName)) return;
+  throw GeneratorException(loc, '`$cppName` would be `$dartName` in Dart, hiding the dart:core `$dartName` that generated code uses',
+      hint: renamable ? 'add `/// @dart OtherName` to its doc comment to give it another Dart name' : 'rename it');
 }
 
 /// Emits `<name>.nb.dart`: the enums and structs declared in one file and
@@ -96,27 +118,27 @@ class DartEmitter {
     switch (t) {
       case EnumType(:final decl):
         if (decl == null) return '\$p.${t.name}';
-        final ext = _externalName(decl.file, decl.name);
+        final ext = _externalName(decl.file, decl.name, decl.doc, decl.loc);
         if (ext != null) return ext;
         _importFor(decl.file);
-        return names.typeName(decl, decl.name, decl.loc);
+        return names.typeName(decl, decl.name, decl.loc, decl.doc);
       case StructType(:final decl):
         if (decl == null) return '\$p.${t.name}';
-        final ext = _externalName(decl.file, decl.name);
+        final ext = _externalName(decl.file, decl.name, decl.doc, decl.loc);
         if (ext != null) return ext;
         _importFor(decl.file);
-        return names.typeName(decl, decl.name, decl.loc);
+        return names.typeName(decl, decl.name, decl.loc, decl.doc);
       default:
         return dartTypeOf(t);
     }
   }
 
   /// `\$x0.Name` for a type defined by another Dart library, else null.
-  String? _externalName(String cppFile, String cppName) {
+  String? _externalName(String cppFile, String cppName, String? doc, SourceLoc loc) {
     final lib = externalLibraryOf(cppFile);
     if (lib == null) return null;
     final prefix = _external.putIfAbsent(lib, () => '\$x${_external.length}');
-    return '$prefix.${dartType(cppName)}';
+    return '$prefix.${dartTypeNameOf(cppName, doc, loc)}';
   }
 
   void _importFor(String cppFile) {
@@ -171,10 +193,10 @@ class DartEmitter {
   // ------------------------------------------------------------ enums
 
   void _enum(EnumDecl e) {
-    final name = names.typeName(e, e.name, e.loc);
+    final name = names.typeName(e, e.name, e.loc, e.doc);
     final seen = <String>{};
     _l();
-    _doc(e.doc, '');
+    _doc(dartNameFromDoc(e.doc).$2, '');
     _l('enum $name implements \$p.BindEnum {');
     for (final (k, v) in e.values.indexed) {
       final dn = dartEnumValue(v.name);
@@ -203,7 +225,7 @@ class DartEmitter {
   // ------------------------------------------------------------ structs
 
   void _struct(RStruct s) {
-    final name = names.typeName(s.decl, s.decl.name, s.decl.loc);
+    final name = names.typeName(s.decl, s.decl.name, s.decl.loc, s.decl.doc);
     final fields = [
       for (final f in s.fields) (field: f, dart: dartMember(f.decl.name), type: dartTypeOf(f.type)),
     ];
@@ -215,7 +237,7 @@ class DartEmitter {
     }
 
     _l();
-    _doc(s.decl.doc, '');
+    _doc(dartNameFromDoc(s.decl.doc).$2, '');
     _l('final class $name {');
     _l('  const $name({');
     for (final f in fields) {
@@ -430,11 +452,12 @@ class DartEmitter {
 
   void _module(RModule m) {
     final name = dartType(m.decl.name);
+    checkNotCoreType(name, m.decl.name, m.decl.loc, renamable: false);
     final instanced = m.decl.instanced;
     final reserved = instanced ? {'instances', 'byKey', 'key', '\$type'} : {'instance', '\$type'};
     final used = <String, Member>{};
     String member(Member mem) {
-      final d = dartMember(mem.name);
+      final d = dartModuleMember(mem.name);
       if (reserved.contains(d) || d.startsWith('\$')) {
         throw GeneratorException(mem.loc, '`${mem.name}` clashes with the generated $name.$d', hint: 'rename the member');
       }
@@ -543,7 +566,7 @@ class DartEmitter {
           }
       }
     }
-    final values = [for (final mem in m.members) if (mem is RProp) dartMember(mem.name)];
+    final values = [for (final mem in m.members) if (mem is RProp) dartModuleMember(mem.name)];
     _l();
     _l('  /// Every property, in declaration order (for generic settings screens).');
     _l('  @override');

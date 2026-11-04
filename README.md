@@ -318,6 +318,10 @@ them handy as help text.
 | `std::chrono::system_clock::time_point` | `DateTime` |
 | `std::chrono::duration` (`seconds`, `milliseconds`, ...) | `Duration` |
 
+A type can take another Dart name with `/// @dart Name` in its doc comment
+(say, `Color` → `LedColor`, to stay clear of Flutter's `Color`); see the
+generator README for the naming rules.
+
 Aliases (`using`, `typedef`), namespaces and nested types are understood. Give
 structs `bool operator==(const T&) const = default;` so nativebind can skip
 updates that change nothing.
