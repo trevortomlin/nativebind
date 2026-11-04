@@ -1,37 +1,16 @@
 // End to end: generated Dart code + the real C++ runtime and test modules
 // (native/tests/modules/thermo.cpp), built with CMake on first run.
 
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nativebind/nativebind.dart';
 
 import 'generated/thermo/nativebind_modules.dart';
 
-final _buildDir = '${Directory.current.path}/build/native_test';
-
-String? _buildLibrary() {
-  final cmake = Process.runSync('which', ['cmake']);
-  if (cmake.exitCode != 0) return null;
-  final ninja = Process.runSync('which', ['ninja']).exitCode == 0;
-  final configure = Process.runSync('cmake', [
-    '-S',
-    'native',
-    '-B',
-    _buildDir,
-    if (ninja) ...['-G', 'Ninja'],
-    '-DCMAKE_BUILD_TYPE=Debug',
-    '-DNATIVEBIND_WERROR=OFF',
-  ]);
-  if (configure.exitCode != 0) throw StateError('cmake configure failed:\n${configure.stdout}\n${configure.stderr}');
-  final build = Process.runSync('cmake', ['--build', _buildDir, '--target', 'nativebind_test_modules']);
-  if (build.exitCode != 0) throw StateError('native build failed:\n${build.stdout}\n${build.stderr}');
-  final lib = File('$_buildDir/tests/libnativebind_test_modules.so');
-  return lib.existsSync() ? lib.path : null;
-}
+import 'support/native_library.dart';
 
 void main() {
-  final library = _buildLibrary();
+  final library = buildNativeTestLibrary();
   final skip = library == null ? 'cmake not available' : null;
 
   Future<Thermo> start() async {

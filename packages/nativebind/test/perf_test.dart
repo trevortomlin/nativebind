@@ -13,6 +13,8 @@ import 'package:nativebind/testing.dart';
 
 import 'generated/thermo/nativebind_modules.dart';
 
+import 'support/native_library.dart';
+
 const thermo = 1;
 
 void Function(WireWriter) reading(String sensor, double value) => (w) {
@@ -48,19 +50,6 @@ double p95(List<int> xs) {
 }
 
 void report(String name, String value) => stdout.writeln('  perf: ${name.padRight(44)} $value');
-
-String _library() {
-  final dir = '${Directory.current.path}/build/native_test';
-  final ninja = Process.runSync('which', ['ninja']).exitCode == 0;
-  for (final args in [
-    ['-S', 'native', '-B', dir, if (ninja) ...['-G', 'Ninja'], '-DCMAKE_BUILD_TYPE=Debug', '-DNATIVEBIND_WERROR=OFF'],
-    ['--build', dir, '--target', 'nativebind_test_modules'],
-  ]) {
-    final r = Process.runSync('cmake', args);
-    if (r.exitCode != 0) throw StateError('cmake failed:\n${r.stdout}\n${r.stderr}');
-  }
-  return '$dir/tests/libnativebind_test_modules.so';
-}
 
 void main() {
   tearDown(NativeBind.stop);
@@ -144,7 +133,7 @@ void main() {
 
   group('real library', () {
     late String library;
-    setUpAll(() => library = _library());
+    setUpAll(() => library = requireNativeTestLibrary());
 
     test('write → acknowledged echo latency', () async {
       await NativeBind.start(library: library, modules: nativebindModules);

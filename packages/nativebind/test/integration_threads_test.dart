@@ -5,7 +5,6 @@
 library;
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nativebind/nativebind.dart';
@@ -13,18 +12,7 @@ import 'package:nativebind/nativebind.dart';
 import 'generated/device/nativebind_modules.dart' as dev;
 import 'generated/thermo/nativebind_modules.dart' as th;
 
-String _library() {
-  final dir = '${Directory.current.path}/build/native_test';
-  final ninja = Process.runSync('which', ['ninja']).exitCode == 0;
-  for (final args in [
-    ['-S', 'native', '-B', dir, if (ninja) ...['-G', 'Ninja'], '-DCMAKE_BUILD_TYPE=Debug', '-DNATIVEBIND_WERROR=OFF'],
-    ['--build', dir, '--target', 'nativebind_test_modules'],
-  ]) {
-    final r = Process.runSync('cmake', args);
-    if (r.exitCode != 0) throw StateError('cmake failed:\n${r.stdout}\n${r.stderr}');
-  }
-  return '$dir/tests/libnativebind_test_modules.so';
-}
+import 'support/native_library.dart';
 
 /// Waits (real time) until [cond] holds, draining the feed meanwhile.
 Future<void> until(bool Function() cond, {Duration timeout = const Duration(seconds: 5)}) async {
@@ -37,7 +25,7 @@ Future<void> until(bool Function() cond, {Duration timeout = const Duration(seco
 }
 
 void main() {
-  final library = _library();
+  final library = requireNativeTestLibrary();
   final modules = [...th.nativebindModules, ...dev.nativebindModules];
 
   Future<void> start() => NativeBind.start(library: library, modules: modules);
