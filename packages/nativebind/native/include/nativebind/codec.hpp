@@ -10,7 +10,9 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <optional>
+#include <ratio>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -61,6 +63,48 @@ template <class R, class P> struct is_duration<std::chrono::duration<R, P>> : st
 template <class T> struct is_sys_time : std::false_type {};
 template <class D> struct is_sys_time<std::chrono::time_point<std::chrono::system_clock, D>> : std::true_type {};
 template <class> inline constexpr bool always_false = false;
+
+/// Microseconds (the wire unit) in a duration, saturated to the int64 range:
+/// coarse "never" sentinels such as hours::max() do not overflow.
+template <class R, class P>
+int64_t toMicros(std::chrono::duration<R, P> d) noexcept {
+    using Q = std::ratio_divide<P, std::micro>;  // microseconds per tick
+    constexpr int64_t hi = std::numeric_limits<int64_t>::max(), lo = std::numeric_limits<int64_t>::min();
+    if constexpr (std::is_floating_point_v<R>) {
+        const double us = static_cast<double>(d.count()) * static_cast<double>(Q::num) / static_cast<double>(Q::den);
+        if (us != us) return 0;  // NaN
+        if (us >= 0x1p63) return hi;
+        if (us <= -0x1p63) return lo;
+        return static_cast<int64_t>(us);
+    } else {
+        constexpr intmax_t lim = std::numeric_limits<intmax_t>::max() / Q::num;
+        const R c = d.count();
+        if (std::cmp_greater(c, lim)) return hi;
+        if (std::cmp_less(c, -lim)) return lo;
+        return static_cast<int64_t>(static_cast<intmax_t>(c) * Q::num / Q::den);
+    }
+}
+
+/// A duration from wire microseconds; throws DecodeError if it does not fit
+/// (e.g. a Dart DateTime in year 9999 for a nanosecond system_clock).
+template <class D>
+D fromMicros(int64_t us) {
+    using Rep = typename D::rep;
+    if constexpr (std::is_floating_point_v<Rep>) {
+        return std::chrono::duration_cast<D>(std::chrono::duration<double, std::micro>(static_cast<double>(us)));
+    } else {
+        using Q = std::ratio_divide<std::micro, typename D::period>;  // ticks per microsecond
+        constexpr intmax_t lim = std::numeric_limits<intmax_t>::max() / Q::num;
+        const auto fail = [us] {
+            throw DecodeError("nativebind: time or duration of " + std::to_string(us) +
+                              " us is out of range for the C++ type");
+        };
+        if (us > lim || us < -lim) fail();
+        const intmax_t ticks = static_cast<intmax_t>(us) * Q::num / Q::den;  // truncates like duration_cast
+        if (!std::in_range<Rep>(ticks)) fail();
+        return D(static_cast<Rep>(ticks));
+    }
+}
 
 template <class T>
 inline constexpr bool is_string_like =
@@ -234,10 +278,10 @@ void Writer::value(const T& v) {
         else tag(Tag::None);
     } else if constexpr (detail::is_sys_time<U>::value) {
         tag(Tag::Time);
-        i64(duration_cast<microseconds>(v.time_since_epoch()).count());
+        i64(detail::toMicros(v.time_since_epoch()));
     } else if constexpr (detail::is_duration<U>::value) {
         tag(Tag::Duration);
-        i64(duration_cast<microseconds>(v).count());
+        i64(detail::toMicros(v));
     } else if constexpr (std::is_class_v<U>) {
         detail::structCodec(typeid(U)).encode(*this, &v);
     } else {
@@ -286,10 +330,10 @@ T Reader::value() {
         return U(value<typename U::value_type>());
     } else if constexpr (detail::is_sys_time<U>::value) {
         expect(Tag::Time);
-        return U(duration_cast<typename U::duration>(microseconds(i64())));
+        return U(detail::fromMicros<typename U::duration>(i64()));
     } else if constexpr (detail::is_duration<U>::value) {
         expect(Tag::Duration);
-        return duration_cast<U>(microseconds(i64()));
+        return detail::fromMicros<U>(i64());
     } else if constexpr (std::is_class_v<U>) {
         static_assert(std::is_default_constructible_v<U>, "nativebind: structs that cross the binding need a default constructor");
         U out{};
