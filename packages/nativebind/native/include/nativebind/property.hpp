@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <concepts>
+#include <exception>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -196,7 +197,14 @@ private:
     }
 
     void applyUiWrite(T v, uint32_t seq) {
-        std::optional<T> accepted = validator_ ? validator_(v) : std::optional<T>(std::move(v));
+        std::optional<T> accepted;
+        try {
+            accepted = validator_ ? validator_(v) : std::optional<T>(std::move(v));
+        } catch (const std::exception& e) {
+            detail::logf("validator of %s threw: %s (write rejected)", name(), e.what());
+        } catch (...) {
+            detail::logf("validator of %s threw a non-std exception (write rejected)", name());
+        }
         {
             std::lock_guard g(mutex_);
             if (accepted) value_ = *accepted;

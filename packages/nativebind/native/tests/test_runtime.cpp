@@ -170,6 +170,24 @@ TEST(ui_write_is_clamped_validated_and_acknowledged) {
     CHECK_EQ(th.name.get(), std::string("A very long room"));  // validator returned a replacement
 }
 
+TEST(ui_write_is_acknowledged_when_the_validator_throws) {
+    feed::Started s;
+    feed::Consumer c;
+    c.pump();
+    auto& th = singleton<Thermo>();
+    th.name.validate([](const std::string&) -> bool { throw std::runtime_error("validator bug"); });
+
+    CHECK_EQ(write(th, kName, feed::encode(std::string("ignored")), 7), NATIVEBIND_OK);
+    auto recs = feed::only(c.settle(), Rec::Prop);
+    // Treated as a rejection: echoed with the old value, so the UI does not
+    // keep showing (and waiting on) the optimistic one forever.
+    CHECK_EQ(recs.size(), size_t{1});
+    CHECK_EQ(recs[0].member, kName);
+    CHECK_EQ(recs[0].seq, uint32_t{7});
+    CHECK_EQ(recs[0].values[0].s, std::string("Living room"));
+    CHECK_EQ(th.name.get(), std::string("Living room"));
+}
+
 TEST(ui_write_errors) {
     feed::Started s;
     feed::Consumer c;
