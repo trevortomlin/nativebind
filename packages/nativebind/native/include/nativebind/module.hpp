@@ -3,8 +3,10 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <vector>
 
 #include "nativebind/detail/core.hpp"
@@ -83,6 +85,15 @@ private:
     friend class PropBase;
     friend class ListBase;
     friend class SignalBase;
+    friend class Worker;
+
+    /// Registers fn to run when the module ends (after onStop, before it is
+    /// deleted): owned Workers stop, owned signal connections end.
+    uint64_t atEnd(std::function<void()> fn);
+    /// Unregisters; if fn is running on another thread, waits for it.
+    void cancelAtEnd(uint64_t id);
+    /// Runs the atEnd functions, newest first. Called by the runtime.
+    void endOwned();
 
     std::vector<PropBase*> props_;
     std::vector<ListBase*> lists_;
@@ -92,6 +103,11 @@ private:
     uint16_t typeId_ = 0;
     const glue::ModuleType* type_ = nullptr;
     std::atomic<bool> live_{false};
+    std::mutex endsMutex_;
+    std::condition_variable endDone_;
+    std::vector<std::pair<uint64_t, std::function<void()>>> ends_;
+    uint64_t nextEnd_ = 0;
+    uint64_t ending_ = 0;  // id of the atEnd function running now
 };
 
 }  // namespace nativebind

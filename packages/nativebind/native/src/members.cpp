@@ -1,6 +1,8 @@
 // Non-template parts of Module and the bound member classes.
 
+#include <algorithm>
 #include <variant>
+
 #include "nativebind/list.hpp"
 #include "nativebind/module.hpp"
 #include "nativebind/property.hpp"
@@ -12,7 +14,10 @@ namespace nativebind {
 
 Module::Module() : handle_(detail::newHandle()) {}
 
-Module::~Module() { detail::moduleGone(handle_); }
+Module::~Module() {
+    endOwned();  // modules the runtime never adopted (it ends them in destroyNow)
+    detail::moduleGone(handle_);
+}
 
 TimerId Module::every(std::chrono::milliseconds period, std::function<void()> fn) {
     if (period.count() <= 0) throw std::invalid_argument("nativebind::Module::every: period must be positive");
@@ -103,7 +108,7 @@ void PropBase::encodeMeta(Writer& w) const {
     if (writable_) flags |= 1;
     if (enabled_) flags |= 2;
     w.u8(flags);
-    w.str(meta_.label ? meta_.label : "");
+    w.str(meta_.label);
     w.u16(static_cast<uint16_t>(meta_.attrs.size()));
     for (const Attr& a : meta_.attrs) {
         w.str(a.key);
@@ -143,5 +148,64 @@ SignalBase::SignalBase(Module* owner, const char* name)
     : owner_(owner), name_(name), index_(static_cast<uint16_t>(owner->signals_.size())) {
     owner->signals_.push_back(this);
 }
+
+void SignalBase::endWith(Module& listener, std::function<void()> disconnect) { listener.atEnd(std::move(disconnect)); }
+
+uint64_t Module::atEnd(std::function<void()> fn) {
+    std::lock_guard g(endsMutex_);
+    ends_.emplace_back(++nextEnd_, std::move(fn));
+    return nextEnd_;
+}
+
+void Module::cancelAtEnd(uint64_t id) {
+    std::unique_lock l(endsMutex_);
+    if (std::erase_if(ends_, [id](const auto& e) { return e.first == id; }) > 0) return;
+    endDone_.wait(l, [&] { return ending_ != id; });
+}
+
+void Module::endOwned() {
+    std::unique_lock l(endsMutex_);
+    while (!ends_.empty()) {
+        auto [id, fn] = std::move(ends_.back());
+        ends_.pop_back();
+        ending_ = id;
+        l.unlock();
+        fn();  // outside the lock: it may wait for other threads
+        l.lock();
+        ending_ = 0;
+        endDone_.notify_all();
+    }
+}
+
+namespace detail {
+namespace {
+// Listeners whose calls are running on this thread (innermost last).
+thread_local std::vector<const ListenerSlot*> runningHere;
+}  // namespace
+
+ListenerCall::ListenerCall(ListenerSlot& s) : slot_(s) {
+    std::lock_guard g(s.m);
+    entered_ = s.connected;
+    if (entered_) {
+        ++s.running;
+        runningHere.push_back(&s);
+    }
+}
+
+ListenerCall::~ListenerCall() {
+    if (!entered_) return;
+    runningHere.pop_back();
+    std::lock_guard g(slot_.m);
+    --slot_.running;
+    slot_.idle.notify_all();
+}
+
+void retireListener(ListenerSlot& s) {
+    const auto mine = std::count(runningHere.begin(), runningHere.end(), &s);
+    std::unique_lock l(s.m);
+    s.connected = false;
+    s.idle.wait(l, [&] { return s.running == mine; });
+}
+}  // namespace detail
 
 }  // namespace nativebind

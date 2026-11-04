@@ -57,7 +57,7 @@ struct Meta {
     double min = -kUnbounded;
     double max = kUnbounded;
     double step = 0;              ///< UI increment; 0 = continuous (or 1 for integers)
-    const char* label = nullptr;  ///< display name; null = derived from the member name
+    std::string label = {};       ///< display name; empty = derived from the member name
     Attrs attrs = {};             ///< for layers above nativebind; see Attr
 };
 

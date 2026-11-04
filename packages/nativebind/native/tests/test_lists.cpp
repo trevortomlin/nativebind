@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -90,6 +91,19 @@ TEST(list_bounds_are_checked) {
     th.readings.insert(0, R("x"));
     CHECK_THROWS(th.readings.move(0, 1), std::out_of_range);
     CHECK_THROWS(th.readings.erase(0, 2), std::out_of_range);
+}
+
+TEST(list_erase_rejects_counts_that_overflow) {
+    Thermo th;
+    for (int i = 0; i < 10; ++i) th.readings.push_back(R(std::to_string(i)));
+    // i + count - 1 wraps around to a small, "valid" index.
+    CHECK_THROWS(th.readings.erase(5, SIZE_MAX), std::out_of_range);
+    CHECK_THROWS(th.readings.erase(5, SIZE_MAX - 3), std::out_of_range);
+    CHECK_THROWS(th.readings.erase(11, 0), std::out_of_range);
+    CHECK_EQ(th.readings.size(), size_t{10});
+    th.readings.erase(10, 0);  // an empty range at the end is fine
+    th.readings.erase(5, 5);
+    CHECK_EQ(th.readings.size(), size_t{5});
 }
 
 TEST(list_sync_keeps_identity_with_minimal_operations) {

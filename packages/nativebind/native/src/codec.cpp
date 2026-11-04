@@ -54,7 +54,7 @@ const StructCodec& structCodec(std::type_index type) {
     if (it == r.codecs.end())
         throw std::logic_error(std::string("nativebind: struct ") + type.name() +
                                " has no codec. Structs crossing the binding must be defined in a module file "
-                               "processed by nativebind generate.");
+                               "listed in nativebind_add_modules (the generator emits the codec).");
     return it->second;  // unordered_map references stay valid across inserts
 }
 

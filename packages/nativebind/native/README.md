@@ -101,7 +101,6 @@ public:
     }
 protected:
     void onStart() override { io_.every(500ms, [this] { poll(); }); }
-    void onStop() override { io_.stop(); }
 private:
     void poll() {                                   // on io_
         auto r = port_.read();                      // may block or throw
@@ -110,7 +109,7 @@ private:
         humidity = r.humidity;
     }
     SerialPort port_;                       // only used on io_
-    nativebind::Worker io_{"station-io"};   // declared last: stops first
+    nativebind::Worker io_{*this, "station-io"};  // stopped after onStop
 };
 ```
 
@@ -124,7 +123,7 @@ private:
 |---|---|
 | block the nativebind thread (I/O in `onWrite`, invokes, timers) | `io_.post(...)` |
 | share plain members between the worker and the nativebind thread | a bound prop, or `post` |
-| let a worker outlive the module | `io_.stop()` in `onStop()`, and declare the Worker last |
+| let a worker outlive the module | give it its module, `Worker io_{*this, "name"}`, or `io_.stop()` in `onStop()` |
 
 `Worker::sleepFor` returns early when the worker stops, for long-running
 loops. Workers get thread names (`top -H`), and exceptions in tasks are
@@ -148,7 +147,8 @@ generated `player.nb.hpp` and call `nativebind::ref::Player::get()`.
 ### Writes from the UI
 
 1. The runtime checks writability, enabled state and the guard
-   (`nativebind::setGuard`), then clamps to `[min, max]`.
+   (`nativebind::setGuard`) when the write arrives, then, on the nativebind
+   thread, checks enabled state again and clamps to the current `[min, max]`.
 2. `validate(fn)` may accept, reject or replace the value.
 3. `onWrite(fn)` runs after the value is stored.
 
@@ -191,8 +191,10 @@ cmake -B build-tsan -DCMAKE_BUILD_TYPE=Debug -DNATIVEBIND_SANITIZE=thread
 
 In an application, add the module sources with `nativebind_add_modules`. It
 generates the glue at build time and links `nativebind::runtime` (an OBJECT
-library) into your shared library, which then exports only the `nativebind_*`
-C functions:
+library) into your shared library. Unless you set `CXX_VISIBILITY_PRESET`
+yourself, it also hides every symbol except the `nativebind_*` C functions.
+The generator reads headers in the target's include directories
+(`target_include_directories`) as well as in `INCLUDE_DIRS`:
 
 ```cmake
 add_subdirectory(path/to/nativebind/native nativebind)

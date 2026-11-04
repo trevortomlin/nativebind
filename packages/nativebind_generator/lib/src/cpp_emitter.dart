@@ -3,30 +3,25 @@ import 'lexer.dart';
 import 'model.dart';
 import 'naming.dart';
 
-String _tag(TypeRef t) => switch (t) {
-      PrimType(prim: Prim.boolT) => 'Bool',
-      PrimType(prim: Prim.intT) => 'Int',
-      PrimType(prim: Prim.doubleT) => 'Double',
-      PrimType(prim: Prim.stringT) => 'String',
-      PrimType(prim: Prim.timeT) => 'Time',
-      PrimType(prim: Prim.durationT) => 'Duration',
-      PrimType(prim: Prim.voidT) => 'Void',
-      ListType() => 'List',
-      OptionalType(:final inner) => _tag(inner),
-      EnumType() => 'Enum',
-      StructType() => 'Struct',
+const _sh = '::nativebind::glue::shape';
+
+/// The C++ shape type (see glue.hpp) the generated code asserts a type has.
+String _shape(TypeRef t) => switch (t) {
+      PrimType(prim: Prim.voidT) => '$_sh::Void',
+      PrimType(prim: Prim.boolT) => '$_sh::Bool',
+      PrimType(prim: Prim.intT) => '$_sh::Int',
+      PrimType(prim: Prim.doubleT) => '$_sh::Double',
+      PrimType(prim: Prim.stringT) => '$_sh::String',
+      PrimType(prim: Prim.timeT) => '$_sh::Time',
+      PrimType(prim: Prim.durationT) => '$_sh::Duration',
+      ListType(:final item) => '$_sh::List<${_shape(item)}>',
+      OptionalType(:final inner) => '$_sh::Optional<${_shape(inner)}>',
+      EnumType(:final decl) => '$_sh::Enum<${decl?.qualified ?? '$_sh::Any'}>',
+      StructType(:final decl) => '$_sh::Struct<${decl?.qualified ?? '$_sh::Any'}>',
     };
 
-String _describe(TypeRef t) => switch (t) {
-      PrimType(prim: Prim.stringT) => 'std::string',
-      PrimType(prim: Prim.timeT) => 'a system_clock time point',
-      PrimType(prim: Prim.durationT) => 'a std::chrono duration',
-      PrimType() => t.schema,
-      ListType() => 'a std::vector',
-      OptionalType(:final inner) => _describe(inner),
-      EnumType() => 'an enum',
-      StructType() => 'a struct',
-    };
+String _args(Iterable<TypeRef> ts) => '$_sh::Args<${ts.map(_shape).join(', ')}>';
+String _argSchema(Iterable<TypeRef> ts) => '(${ts.map((t) => t.schema).join(', ')})';
 
 /// Emits `<name>.nb.cpp` for the modules of one source file.
 class CppEmitter {
@@ -100,8 +95,8 @@ class CppEmitter {
     final n = s.fields.length;
     _l();
     for (final f in s.fields) {
-      _l('static_assert(::nativebind::tagOf<decltype($q::${f.decl.name})>() == ::nativebind::Tag::${_tag(f.type)},');
-      _l('              "nativebind_generator read $q::${f.decl.name} as ${_describe(f.type)}; please report this");');
+      _l('static_assert(::nativebind::glue::hasShape<decltype($q::${f.decl.name}), ${_shape(f.type)}>,');
+      _l('              "nativebind_generator read $q::${f.decl.name} as ${f.type.schema}; please report this");');
     }
     _l();
     final names = [for (var k = 0; k < n; k++) 'f$k'].join(', ');
@@ -151,13 +146,24 @@ class CppEmitter {
       _l('    };');
     }
     _l();
+    // The generator's reading of every type against the compiler's, nested
+    // types included (glue.hpp, "shapes").
     for (final p in props) {
-      _l('    static_assert(::nativebind::tagOf<decltype(Self::${p.name})::value_type>() == ::nativebind::Tag::${_tag(p.type)},');
-      _l('                  "nativebind_generator read $name::${p.name} as ${_describe(p.type)}; please report this");');
+      _l('    static_assert(::nativebind::glue::hasShape<decltype(Self::${p.name})::value_type, ${_shape(p.type)}>,');
+      _l('                  "nativebind_generator read $name::${p.name} as ${p.type.schema}; please report this");');
     }
     for (final l in m.lists) {
-      _l('    static_assert(::nativebind::tagOf<decltype(Self::${l.name})::value_type>() == ::nativebind::Tag::${_tag(l.item)},');
-      _l('                  "nativebind_generator read the items of $name::${l.name} as ${_describe(l.item)}; please report this");');
+      _l('    static_assert(::nativebind::glue::hasShape<decltype(Self::${l.name})::value_type, ${_shape(l.item)}>,');
+      _l('                  "nativebind_generator read the items of $name::${l.name} as ${l.item.schema}; please report this");');
+    }
+    for (final sig in m.signals) {
+      _l('    static_assert(::nativebind::glue::signalHasShape<decltype(Self::${sig.name}), ${_args(sig.args)}>,');
+      _l('                  "nativebind_generator read the arguments of $name::${sig.name} as ${_argSchema(sig.args)}; please report this");');
+    }
+    for (final f in methods) {
+      final params = f.params.map((p) => p.type);
+      _l('    static_assert(::nativebind::glue::methodHasShape<&Self::${f.name}, $_sh::Fn<${_shape(f.returns)}, ${_args(params)}>>,');
+      _l('                  "nativebind_generator read $name::${f.name} as ${f.returns.schema}${_argSchema(params)}; please report this");');
     }
     for (final e in m.enums) {
       final d = e.decl;
@@ -167,7 +173,9 @@ class CppEmitter {
         _l('                  "nativebind_generator read ${d.name}::${v.name} as ${v.value}; please report this");');
       }
     }
-    if (props.isNotEmpty || m.lists.isNotEmpty || m.enums.any((e) => e.decl != null)) _l();
+    if (props.isNotEmpty || m.lists.isNotEmpty || m.signals.isNotEmpty || methods.isNotEmpty || m.enums.any((e) => e.decl != null)) {
+      _l();
+    }
 
     _l('    static void invoke(::nativebind::Module& m, uint16_t method, ::nativebind::Reader& args, ::nativebind::Writer& result) {');
     if (methods.isEmpty) {

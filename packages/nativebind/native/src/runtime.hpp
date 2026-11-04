@@ -76,9 +76,11 @@ public:
     void cancelTimer(TimerId id);
     void moduleGone(uint32_t handle) noexcept;
 
-    // batches (nativebind::Batch): the feed is not read while one is open
+    // batches (nativebind::Batch): the feed is not read while one is open.
+    // drain() never waits for them; it returns nothing and the batch that
+    // closes last wakes the consumer again.
     void beginBatch() { commit_.lock_shared(); }
-    void endBatch() { commit_.unlock_shared(); }
+    void endBatch();
     PropBase& findProperty(std::string_view module, std::string_view prop, uint64_t key);
 
     // access policy (nativebind::setGuard); copied out under guardMutex_
@@ -114,6 +116,7 @@ private:
     // lifecycle
     std::mutex lifecycle_;
     std::atomic<bool> started_{false};
+    bool stopping_ = false;  // guarded by registry_: stop() took its snapshot of modules
     Loop loop_;
 
     // types (registered during static initialization)
@@ -124,6 +127,8 @@ private:
     // Shared by open batches, exclusive while the feed is read (lock order:
     // commit_ > registry_).
     std::shared_mutex commit_;
+    /// A drain found a batch open; the next endBatch wakes the consumer.
+    std::atomic<bool> drainDeferred_{false};
 
     // instances
     mutable std::shared_mutex registry_;
@@ -140,6 +145,7 @@ private:
     std::vector<uint8_t> drainBuffer_;
 
     std::mutex wakeMutex_;
+    std::atomic<bool> consumer_{false};  // a port or callback is attached
     int64_t port_ = 0;
     void (*wakeCallback_)(void*) = nullptr;
     void* wakeUser_ = nullptr;

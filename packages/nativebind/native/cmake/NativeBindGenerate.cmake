@@ -8,7 +8,10 @@
 # Generates <module>.nb.cpp (+ <module>.nb.hpp, typed references for other
 # module files) for each module source at build time and adds it to <target>
 # (the module source itself is compiled through it). Links
-# nativebind::runtime into <target> if it is not linked yet.
+# nativebind::runtime into <target> if it is not linked yet. The generator
+# also reads headers in <target>'s include directories. A shared library
+# gets hidden symbol visibility (only nativebind_* is exported) unless
+# CXX_VISIBILITY_PRESET is already set.
 #
 #     add_library(my_backend SHARED)
 #     nativebind_add_modules(my_backend SOURCES modules/player.cpp modules/downloads.cpp)
@@ -125,6 +128,10 @@ function(nativebind_add_modules target)
     get_filename_component(dir_abs "${dir}" ABSOLUTE)
     list(APPEND include_args -I "${dir_abs}")
   endforeach()
+  # The target's own include directories (target_include_directories), as
+  # the compiler sees them, so headers found there need no INCLUDE_DIRS.
+  set(target_includes "$<TARGET_PROPERTY:${target},INCLUDE_DIRECTORIES>")
+  list(APPEND include_args "$<$<BOOL:${target_includes}>:-I$<JOIN:${target_includes},$<SEMICOLON>-I>>")
 
   foreach(src IN LISTS ARG_SOURCES)
     get_filename_component(src_abs "${src}" ABSOLUTE)
@@ -151,6 +158,7 @@ function(nativebind_add_modules target)
       DEPENDS "${src_abs}" ${generator_deps}
       ${depfile_opt}
       COMMENT "nativebind: generating ${stem}.nb.cpp"
+      COMMAND_EXPAND_LISTS
       VERBATIM)
 
     # The module file is compiled through its glue; keep it visible to IDEs.
@@ -161,6 +169,16 @@ function(nativebind_add_modules target)
   endforeach()
 
   target_include_directories(${target} PRIVATE "${ARG_OUTPUT_DIR}")
+
+  # Export only the nativebind_* C ABI from a shared library, unless the
+  # project chose a visibility itself: exported C++ symbols would clash with
+  # another nativebind library loaded into the same process.
+  get_target_property(type ${target} TYPE)
+  get_target_property(visibility ${target} CXX_VISIBILITY_PRESET)
+  if(type MATCHES "^(SHARED|MODULE)_LIBRARY$" AND NOT visibility)
+    set_target_properties(${target} PROPERTIES
+      CXX_VISIBILITY_PRESET hidden C_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+  endif()
 
   get_target_property(linked ${target} LINK_LIBRARIES)
   if(NOT linked OR (NOT "nativebind::runtime" IN_LIST linked AND NOT "nativebind_runtime" IN_LIST linked))

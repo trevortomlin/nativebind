@@ -135,6 +135,28 @@ TEST(stop_calls_onStop_for_every_module) {
     CHECK_THROWS(singleton<Thermo>(), std::logic_error);
 }
 
+TEST(spawn_while_stopping_is_refused_and_leaves_nothing_behind) {
+    bool refused = false;
+    {
+        feed::Started s;
+        spawn<Zone>(1, "a");
+        nativebind_flush(5000);
+        Zone::stopHook = [&] {
+            try {
+                spawn<Zone>(99, "late");
+            } catch (const std::logic_error&) {
+                refused = true;
+            }
+        };
+    }
+    Zone::stopHook = nullptr;
+    {
+        feed::Started s;
+        CHECK(instances<Zone>().empty());  // nothing survived into the next run
+    }
+    CHECK(refused);
+}
+
 TEST(restart_creates_fresh_singletons) {
     uint32_t first;
     {

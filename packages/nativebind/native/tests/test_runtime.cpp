@@ -1,3 +1,4 @@
+#include <future>
 #include <string>
 #include <thread>
 
@@ -168,6 +169,51 @@ TEST(ui_write_is_clamped_validated_and_acknowledged) {
     CHECK_EQ(write(th, kName, feed::encode(std::string("A very long room name indeed")), 4), NATIVEBIND_OK);
     c.settle();
     CHECK_EQ(th.name.get(), std::string("A very long room"));  // validator returned a replacement
+}
+
+TEST(ui_write_is_acknowledged_when_the_validator_throws) {
+    feed::Started s;
+    feed::Consumer c;
+    c.pump();
+    auto& th = singleton<Thermo>();
+    th.name.validate([](const std::string&) -> bool { throw std::runtime_error("validator bug"); });
+
+    CHECK_EQ(write(th, kName, feed::encode(std::string("ignored")), 7), NATIVEBIND_OK);
+    auto recs = feed::only(c.settle(), Rec::Prop);
+    // Treated as a rejection: echoed with the old value, so the UI does not
+    // keep showing (and waiting on) the optimistic one forever.
+    CHECK_EQ(recs.size(), size_t{1});
+    CHECK_EQ(recs[0].member, kName);
+    CHECK_EQ(recs[0].seq, uint32_t{7});
+    CHECK_EQ(recs[0].values[0].s, std::string("Living room"));
+    CHECK_EQ(th.name.get(), std::string("Living room"));
+}
+
+TEST(ui_write_uses_the_metadata_current_when_it_is_applied) {
+    feed::Started s;
+    feed::Consumer c;
+    c.pump();
+    auto& th = singleton<Thermo>();
+    const int writesBefore = th.writes;
+
+    // Hold the nativebind thread so the writes queue up behind it, then
+    // change the metadata after the UI-side checks have passed.
+    std::promise<void> gate;
+    std::shared_future<void> open = gate.get_future().share();
+    post([open] { open.wait(); });
+    CHECK_EQ(write(th, kSetpoint, feed::encode(28.0), 1), NATIVEBIND_OK);  // within 15..30 now
+    th.setpoint.setRange(15, 25);
+    CHECK_EQ(write(th, kName, feed::encode(std::string("Kitchen")), 2), NATIVEBIND_OK);  // enabled now
+    th.name.setEnabled(false);
+    gate.set_value();
+
+    auto recs = feed::only(c.settle(), Rec::Prop);
+    CHECK_EQ(th.setpoint.get(), 25.0);  // clamped to the new range
+    CHECK_EQ(th.name.get(), std::string("Living room"));  // disabled before it ran: rejected
+    CHECK_EQ(th.writes - writesBefore, 1);  // onWrite saw only the clamped setpoint
+    // Both writes are still acknowledged.
+    CHECK_EQ(recs.size(), size_t{2});
+    for (const auto& r : recs) CHECK_EQ(r.seq, r.member == kSetpoint ? uint32_t{1} : uint32_t{2});
 }
 
 TEST(ui_write_errors) {

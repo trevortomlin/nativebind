@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <functional>
 #include <utility>
 #include <nativebind/nativebind.hpp>
 

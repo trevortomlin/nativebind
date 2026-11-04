@@ -1,5 +1,6 @@
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -91,6 +92,40 @@ TEST(worker_restarts_after_stop) {
     CHECK(waitFor([&] { return n.load() == 2; }));
 }
 
+TEST(a_worker_owned_by_a_module_stops_after_its_onStop) {
+    feed::Started s;
+    Zone& z = spawn<Zone>(21, "owner");
+    auto w = std::make_unique<Worker>(z, "owned");
+    std::atomic<int> ticks{0};
+    w->every(1ms, [&] { ++ticks; });
+    CHECK(waitFor([&] { return ticks.load() > 0; }));
+    bool runningInOnStop = false;
+    Zone::stopHook = [&] { runningInOnStop = w->running(); };
+    destroy(z);
+    CHECK(flush());
+    Zone::stopHook = nullptr;
+    CHECK(runningInOnStop);  // onStop may still use it...
+    CHECK(!w->running());    // ...and it is stopped before the module is deleted
+    // A late post must not bring it back for a module that is gone.
+    std::atomic<bool> ran{false};
+    w->post([&] { ran = true; });
+    std::this_thread::sleep_for(20ms);
+    CHECK(!ran.load());
+    CHECK(!w->running());
+    w.reset();  // outliving its owner is fine
+}
+
+TEST(a_worker_destroyed_before_its_owner_is_forgotten) {
+    feed::Started s;
+    Zone& z = spawn<Zone>(22, "owner");
+    {
+        Worker w(z, "short-lived");
+        w.post([] {});
+    }
+    destroy(z);  // must not touch the destroyed worker
+    CHECK(flush());
+}
+
 TEST(ui_writes_are_forwarded_to_the_io_thread) {
     feed::Started s;
     feed::Consumer c;
@@ -137,6 +172,40 @@ TEST(nested_batches_and_batches_without_a_consumer) {
     feed::Consumer c;
     c.pump();  // would deadlock if a batch leaked its lock
     CHECK_EQ(c.mirror.find(th.handle())->props.at(4).value.d, 3.0);
+}
+
+TEST(drain_does_not_wait_for_open_batches) {
+    feed::Started s;
+    feed::Consumer c;
+    c.pump();
+    auto& dev = singleton<Device>();
+    std::atomic<bool> inBatch{false}, release{false};
+    std::thread worker([&] {
+        Batch b;
+        dev.a = 7;
+        dev.b = 93;
+        inBatch = true;
+        const auto until = std::chrono::steady_clock::now() + 500ms;  // never hang the suite
+        while (!release && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(1ms);
+    });
+    CHECK(waitFor([&] { return inBatch.load(); }));
+
+    // The UI thread drains here: it must not block until the batch closes.
+    const auto t0 = std::chrono::steady_clock::now();
+    auto recs = c.pump();
+    const auto waited = std::chrono::steady_clock::now() - t0;
+    const int wakesBefore = c.wakes();
+    release = true;
+    worker.join();
+    CHECK(waited < 100ms);
+    CHECK(feed::only(recs, feed::Rec::Prop).empty());  // nothing half-applied
+
+    // Closing the batch wakes the consumer, and the next drain has all of it.
+    CHECK(waitFor([&] { return c.wakes() > wakesBefore; }));
+    c.pump();
+    const auto* st = c.mirror.find(dev.handle());
+    CHECK_EQ(st->props.at(0).value.i, int64_t{7});
+    CHECK_EQ(st->props.at(1).value.i, int64_t{93});
 }
 
 TEST(property_lookup_by_name) {

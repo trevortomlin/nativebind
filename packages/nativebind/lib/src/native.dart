@@ -39,9 +39,9 @@ final class FfiNative implements BindNative {
         _start = lib.lookupFunction<Int32 Function(), int Function()>('nativebind_start'),
         _stop = lib.lookupFunction<Void Function(), void Function()>('nativebind_stop'),
         _attachPort = lib.lookupFunction<Void Function(Int64), void Function(int)>('nativebind_attach_port'),
+        // Not a leaf call: encoding a full state (a resync) can take a while.
         _drain = lib.lookupFunction<Pointer<Uint8> Function(Pointer<Uint32>), Pointer<Uint8> Function(Pointer<Uint32>)>(
-            'nativebind_drain',
-            isLeaf: true),
+            'nativebind_drain'),
         _requestResync = lib.lookupFunction<Void Function(), void Function()>('nativebind_request_resync'),
         _typeId = lib.lookupFunction<Int32 Function(Pointer<Utf8>), int Function(Pointer<Utf8>)>('nativebind_type_id'),
         _typeSchema =
@@ -70,14 +70,30 @@ final class FfiNative implements BindNative {
       if (!name.contains('/')) ...['$exeDir/lib/$name', '$exeDir/$name'],
     ];
     for (final c in candidates) {
-      tried.add(c);
+      final DynamicLibrary lib;
       try {
-        return FfiNative(DynamicLibrary.open(c));
-      } on ArgumentError {
+        lib = DynamicLibrary.open(c);
+      } on ArgumentError catch (e) {
+        tried.add('$c: ${_loaderReason(c, e)}');
         continue;
       }
+      if (!lib.providesSymbol('nativebind_abi_version')) {
+        throw BindNotStarted('"$c" was loaded but does not export nativebind_abi_version, so it is not a '
+            'nativebind library: build it with nativebind_add_modules, and if you hide symbols, keep the '
+            'nativebind_* functions exported');
+      }
+      return FfiNative(lib);
     }
-    throw BindNotStarted('cannot load the native library "$name" (tried ${tried.join(', ')})');
+    throw BindNotStarted('cannot load the native library "$name". Tried:\n  ${tried.join('\n  ')}');
+  }
+
+  /// The system loader's message without the parts that repeat the path.
+  static String _loaderReason(String path, ArgumentError e) {
+    var m = '${e.message}';
+    final prefix = "Failed to load dynamic library '$path': ";
+    if (m.startsWith(prefix)) m = m.substring(prefix.length);
+    if (m.startsWith('$path: ')) m = m.substring(path.length + 2);
+    return m.trim();
   }
 
   final int Function() _abiVersion;

@@ -7,16 +7,27 @@ on:
 
 jobs:
   native:
-    name: C++ runtime (${{ matrix.compiler }}, ${{ matrix.sanitize }})
+    name: C++ runtime (${{ matrix.compiler }}, ${{ matrix.stdlib }}, ${{ matrix.sanitize }})
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         compiler: [gcc, clang]
+        stdlib: [libstdc++]
         sanitize: ["address,undefined", "thread"]
+        # Adds jobs: stdlib differs from every combination above.
+        include:
+          # libc++ (as on Android and macOS): its shared_mutex prefers
+          # writers, which changes how Batch and the drain interleave.
+          - compiler: clang
+            stdlib: libc++
+            sanitize: "address,undefined"
+          - compiler: clang
+            stdlib: libc++
+            sanitize: "thread"
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build ${{ matrix.stdlib == 'libc++' && 'libc++-dev libc++abi-dev' || '' }}
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -26,10 +37,18 @@ jobs:
         env:
           CC: ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }}
           CXX: ${{ matrix.compiler == 'clang' && 'clang++' || 'g++' }}
+          CXXFLAGS: ${{ matrix.stdlib == 'libc++' && '-stdlib=libc++' || '' }}
+          LDFLAGS: ${{ matrix.stdlib == 'libc++' && '-stdlib=libc++' || '' }}
+          # Ubuntu's libc++ allocates an exception's message with operator new
+          # (in runtime_error's constructor) and libc++abi frees it with free
+          # (in its destructor): a mismatch between the two system libraries,
+          # reported on any std::runtime_error subclass that is thrown.
+          ASAN_OPTIONS: ${{ matrix.stdlib == 'libc++' && 'alloc_dealloc_mismatch=0' || '' }}
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DNATIVEBIND_SANITIZE=${{ matrix.sanitize }}
           cmake --build build
           ./build/tests/nativebind_tests
+          ctest --test-dir build -L integration --output-on-failure
 
   dart:
     name: Generator, Dart runtime and example
@@ -61,3 +80,26 @@ jobs:
           flutter analyze
           flutter test
           flutter build linux --debug
+
+  dart-minimum:
+    name: Generator and Dart runtime on the oldest supported Flutter (3.24)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build clang cmake
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.24.0
+          cache: true
+      # The lint packages are dev dependencies (never installed by users) and
+      # need a newer SDK than the minimum; the tests do not use them.
+      - name: Generator
+        working-directory: packages/nativebind_generator
+        run: |
+          dart pub remove lints
+          dart test --exclude-tags perf
+      - name: Dart runtime
+        working-directory: packages/nativebind
+        run: |
+          flutter pub remove flutter_lints
+          flutter test --exclude-tags perf

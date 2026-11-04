@@ -70,7 +70,10 @@ TEST(stale_generated_code_is_detected_at_adoption) {
     try {
         spawn<Mismatched>(1);
     } catch (const std::logic_error& e) {
-        threw = std::string(e.what()).find("re-run nativebind generate") != std::string::npos;
+        const std::string msg = e.what();
+        // Names the real tool, not an old command that does not exist.
+        threw = msg.find("nativebind_generator") != std::string::npos &&
+                msg.find("nativebind generate") == std::string::npos;
     }
     CHECK(threw);
     CHECK(instances<Mismatched>().empty());
@@ -203,6 +206,24 @@ TEST(meta_updates_encode_every_field) {
     th.setpoint.setRange(-5, 5);
     th.setpoint.setStep(0.5);
     CHECK(c.pump().empty());
+}
+
+TEST(meta_label_may_come_from_a_temporary_string) {
+    feed::Started s;
+    feed::Consumer c;
+    c.pump();
+    auto& th = singleton<Thermo>();
+    {
+        std::string name = "Zone " + std::to_string(42) + " setpoint, long enough to live on the heap";
+        Meta m = th.setpoint.meta();
+        m.label = name.c_str();
+        th.setpoint.setMeta(m);
+        name.assign(name.size(), 'x');  // the caller reuses its buffer...
+    }  // ...and frees it before the feed is read
+    auto recs = c.pump();
+    CHECK_EQ(recs.size(), size_t{1});
+    CHECK_EQ(recs[0].label, std::string("Zone 42 setpoint, long enough to live on the heap"));
+    CHECK_EQ(th.setpoint.meta().label, std::string("Zone 42 setpoint, long enough to live on the heap"));
 }
 
 TEST(nan_and_infinity_cross_the_binding) {

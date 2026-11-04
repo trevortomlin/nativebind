@@ -117,7 +117,10 @@ void Runtime::stop() {
     runSync([this] {
         std::vector<uint32_t> handles;
         {
-            std::shared_lock reg(registry_);
+            // From here on spawn() is refused: an instance created after this
+            // snapshot would never be stopped and would outlive the run.
+            std::unique_lock reg(registry_);
+            stopping_ = true;
             handles = order_;
         }
         for (auto it = handles.rbegin(); it != handles.rend(); ++it) {
@@ -131,6 +134,10 @@ void Runtime::stop() {
         for (auto it = handles.rbegin(); it != handles.rend(); ++it) destroyNow(*it, false);
     });
     started_ = false;
+    {
+        std::unique_lock reg(registry_);
+        stopping_ = false;
+    }
     loop_.stop();
     {
         std::lock_guard g(eventsMutex_);
@@ -218,7 +225,8 @@ Module& Runtime::registerLocked(const glue::ModuleType& type, std::unique_ptr<Mo
     // The generated glue and the class must agree, or indexes would be wrong.
     auto fail = [&](const std::string& what) {
         throw std::logic_error(std::string("module ") + type.name + ": " + what +
-                               " does not match the generated code; re-run nativebind generate");
+                               " does not match the generated code; rebuild the library so nativebind_generator regenerates "
+                               "its glue (nativebind_add_modules does this)");
     };
     if (m.props_.size() != type.propCount) fail("property count");
     for (size_t i = 0; i < m.props_.size(); ++i) {
@@ -270,6 +278,7 @@ Module& Runtime::adopt(const std::type_info& t, std::unique_ptr<Module> module, 
     Module* m;
     {
         std::unique_lock reg(registry_);
+        if (stopping_) throw std::logic_error(std::string("nativebind::spawn: ") + type->name + ": the runtime is stopping");
         m = &registerLocked(*type, std::move(module), key);
     }
     postFor(m->handle_, [m] { runGuarded([m] { m->onStart(); }, m->type_->name); }, {});
@@ -343,6 +352,7 @@ void Runtime::destroyNow(uint32_t handle, bool callStop) {
         std::lock_guard g(pendingMutex_);
         pendingTimers_.erase(handle);
     }
+    owned->endOwned();  // stops its Workers, ends its connections
     owned.reset();
 }
 
@@ -417,8 +427,10 @@ void Runtime::attachPort(int64_t port) {
     }
     {
         std::lock_guard g(eventsMutex_);
+        events_.clear();  // queued for the previous consumer
         results_.clear();
     }
+    consumer_ = port != 0;
     resync_ = true;
     wakePending_ = false;
     wake();
@@ -433,8 +445,10 @@ void Runtime::attachCallback(void (*cb)(void*), void* user) {
     }
     {
         std::lock_guard g(eventsMutex_);
+        events_.clear();  // queued for the previous consumer
         results_.clear();
     }
+    consumer_ = cb != nullptr;
     resync_ = true;
     wakePending_ = false;
     wake();
@@ -476,7 +490,9 @@ void Runtime::metaChanged(PropBase& p) {
 }
 
 void Runtime::enqueueEvent(Rec kind, BuildFn build, const void* ctx) {
-    if (resync_.load()) return;
+    // A pending resync sends the full state, which supersedes state records.
+    // Signals are events without state, so they are kept for an attached consumer.
+    if (resync_.load() && (kind != Rec::Signal || !consumer_.load())) return;
     bool overflow = false;
     {
         std::lock_guard g(eventsMutex_);
@@ -495,7 +511,7 @@ void Runtime::enqueueEvent(Rec kind, BuildFn build, const void* ctx) {
         }
     }
     if (overflow) {
-        logf("change feed overflow (consumer not draining); the next drain is a full resync");
+        logf("change feed overflow (consumer not draining); the next drain is a full resync and queued signals are dropped");
         resync_ = true;
     }
     wake();
@@ -554,15 +570,49 @@ void Runtime::encodeFullState(Writer& w) {
     }
 }
 
+void Runtime::endBatch() {
+    commit_.unlock_shared();
+    if (drainDeferred_.exchange(false)) {
+        wakePending_.store(false);  // the deferred drain may have left it set
+        wake();
+    }
+}
+
+namespace {
+// Copies the Signal records of a queue of framed records (u8 kind, u32 length, payload).
+void keepSignals(const std::vector<uint8_t>& records, std::vector<uint8_t>& out) {
+    size_t at = 0;
+    while (at + 5 <= records.size()) {
+        uint32_t len;
+        std::memcpy(&len, records.data() + at + 1, 4);
+        const size_t end = at + 5 + len;
+        if (records[at] == static_cast<uint8_t>(Rec::Signal))
+            out.insert(out.end(), records.begin() + static_cast<std::ptrdiff_t>(at),
+                       records.begin() + static_cast<std::ptrdiff_t>(end));
+        at = end;
+    }
+}
+}  // namespace
+
 const std::vector<uint8_t>& Runtime::drain() {
     drainBuffer_.clear();
-    std::unique_lock commit(commit_);  // waits for open batches
+    // Never block the UI thread on a batch. If one is open, report nothing
+    // now; endBatch wakes the consumer. Flag first, then retry, so a batch
+    // that closes in between is not missed.
+    std::unique_lock commit(commit_, std::try_to_lock);
+    if (!commit.owns_lock()) {
+        drainDeferred_.store(true);
+        if (!commit.try_lock()) return drainBuffer_;
+    }
+    drainDeferred_.store(false);
     wakePending_.store(false);
     Writer w(drainBuffer_);
     std::shared_lock reg(registry_);
     if (resync_.exchange(false)) {
+        std::vector<uint8_t> signals;
         {
             std::lock_guard g(eventsMutex_);
+            keepSignals(events_, signals);
             events_.clear();
         }
         {
@@ -573,6 +623,7 @@ const std::vector<uint8_t>& Runtime::drain() {
             dirtyMeta_.clear();
         }
         encodeFullState(w);
+        drainBuffer_.insert(drainBuffer_.end(), signals.begin(), signals.end());
     } else {
         {
             std::lock_guard g(eventsMutex_);

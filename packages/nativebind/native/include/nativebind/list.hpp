@@ -107,8 +107,10 @@ public:
     }
     void erase(size_t i, size_t count = 1) {
         std::lock_guard g(mutex_);
+        const size_t n = items_.size();
+        // Compared against what remains after i, so a huge count cannot wrap.
+        if (i > n || count > n - i) throw std::out_of_range("nativebind::List::erase range out of range");
         if (count == 0) return;
-        check(i + count - 1, items_.size());
         eraseLocked(i, count);
     }
     /// Removes every item matching pred; returns how many were removed.

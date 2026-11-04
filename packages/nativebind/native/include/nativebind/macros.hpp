@@ -1,5 +1,5 @@
 #pragma once
-// The declaration macros. `dart run nativebind:generate` reads these to produce
+// The declaration macros. `nativebind_generator` reads these to produce
 // the FFI glue and the typed Dart view models, so keep each one on its own
 // declaration. Arguments containing top-level commas need parentheses:
 // NATIVEBIND_PROP(Pair, p, (Pair{1, 2})).

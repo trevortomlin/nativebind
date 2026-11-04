@@ -49,8 +49,8 @@ final class ListReset<T> extends ListChange<T> {
 /// operation for animated lists.
 class BoundList<T> extends ChangeNotifier with ListBase<T> implements ValueListenable<List<T>> {
   BoundList.$(this.$slot, this.$codec) {
+    _items = $slot.items.map($codec.decode).toList(); // before binding: a failure can be retried
     $slot.bind(this);
-    _items = $slot.items.map($codec.decode).toList();
   }
 
   final ListSlot $slot;

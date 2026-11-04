@@ -9,12 +9,12 @@
 
 namespace {
 
-static_assert(::nativebind::tagOf<decltype(::Reading::sensor)>() == ::nativebind::Tag::String,
-              "nativebind_generator read ::Reading::sensor as std::string; please report this");
-static_assert(::nativebind::tagOf<decltype(::Reading::value)>() == ::nativebind::Tag::Double,
+static_assert(::nativebind::glue::hasShape<decltype(::Reading::sensor), ::nativebind::glue::shape::String>,
+              "nativebind_generator read ::Reading::sensor as string; please report this");
+static_assert(::nativebind::glue::hasShape<decltype(::Reading::value), ::nativebind::glue::shape::Double>,
               "nativebind_generator read ::Reading::value as double; please report this");
-static_assert(::nativebind::tagOf<decltype(::Reading::history)>() == ::nativebind::Tag::List,
-              "nativebind_generator read ::Reading::history as a std::vector; please report this");
+static_assert(::nativebind::glue::hasShape<decltype(::Reading::history), ::nativebind::glue::shape::List<::nativebind::glue::shape::Int>>,
+              "nativebind_generator read ::Reading::history as list<int>; please report this");
 
 void nativebind_encode_Reading(::nativebind::Writer& w, const void* p) {
     const auto& v = *static_cast<const ::Reading*>(p);
@@ -54,20 +54,48 @@ struct nativebind::glue::Invoker<::Thermo> {
         {"stage", ::nativebind::tagOf<decltype(Self::stage)::value_type>()},
     };
 
-    static_assert(::nativebind::tagOf<decltype(Self::setpoint)::value_type>() == ::nativebind::Tag::Double,
+    static_assert(::nativebind::glue::hasShape<decltype(Self::setpoint)::value_type, ::nativebind::glue::shape::Double>,
                   "nativebind_generator read Thermo::setpoint as double; please report this");
-    static_assert(::nativebind::tagOf<decltype(Self::enabled)::value_type>() == ::nativebind::Tag::Bool,
+    static_assert(::nativebind::glue::hasShape<decltype(Self::enabled)::value_type, ::nativebind::glue::shape::Bool>,
                   "nativebind_generator read Thermo::enabled as bool; please report this");
-    static_assert(::nativebind::tagOf<decltype(Self::name)::value_type>() == ::nativebind::Tag::String,
-                  "nativebind_generator read Thermo::name as std::string; please report this");
-    static_assert(::nativebind::tagOf<decltype(Self::fanSpeed)::value_type>() == ::nativebind::Tag::Int,
+    static_assert(::nativebind::glue::hasShape<decltype(Self::name)::value_type, ::nativebind::glue::shape::String>,
+                  "nativebind_generator read Thermo::name as string; please report this");
+    static_assert(::nativebind::glue::hasShape<decltype(Self::fanSpeed)::value_type, ::nativebind::glue::shape::Int>,
                   "nativebind_generator read Thermo::fanSpeed as int; please report this");
-    static_assert(::nativebind::tagOf<decltype(Self::roomTemp)::value_type>() == ::nativebind::Tag::Double,
+    static_assert(::nativebind::glue::hasShape<decltype(Self::roomTemp)::value_type, ::nativebind::glue::shape::Double>,
                   "nativebind_generator read Thermo::roomTemp as double; please report this");
-    static_assert(::nativebind::tagOf<decltype(Self::stage)::value_type>() == ::nativebind::Tag::Enum,
-                  "nativebind_generator read Thermo::stage as an enum; please report this");
-    static_assert(::nativebind::tagOf<decltype(Self::readings)::value_type>() == ::nativebind::Tag::Struct,
-                  "nativebind_generator read the items of Thermo::readings as a struct; please report this");
+    static_assert(::nativebind::glue::hasShape<decltype(Self::stage)::value_type, ::nativebind::glue::shape::Enum<::Stage>>,
+                  "nativebind_generator read Thermo::stage as Stage; please report this");
+    static_assert(::nativebind::glue::hasShape<decltype(Self::readings)::value_type, ::nativebind::glue::shape::Struct<::Reading>>,
+                  "nativebind_generator read the items of Thermo::readings as Reading; please report this");
+    static_assert(::nativebind::glue::signalHasShape<decltype(Self::overTemp), ::nativebind::glue::shape::Args<::nativebind::glue::shape::Double>>,
+                  "nativebind_generator read the arguments of Thermo::overTemp as (double); please report this");
+    static_assert(::nativebind::glue::signalHasShape<decltype(Self::note), ::nativebind::glue::shape::Args<::nativebind::glue::shape::String, ::nativebind::glue::shape::Int>>,
+                  "nativebind_generator read the arguments of Thermo::note as (string, int); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::boost, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<::nativebind::glue::shape::Int>>>,
+                  "nativebind_generator read Thermo::boost as void(int); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::add, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Double, ::nativebind::glue::shape::Args<::nativebind::glue::shape::Double, ::nativebind::glue::shape::Double>>>,
+                  "nativebind_generator read Thermo::add as double(double, double); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::makeReading, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Struct<::Reading>, ::nativebind::glue::shape::Args<::nativebind::glue::shape::String>>>,
+                  "nativebind_generator read Thermo::makeReading as Reading(string); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::fail, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<>>>,
+                  "nativebind_generator read Thermo::fail as void(); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::calibrate, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<::nativebind::glue::shape::Double>>>,
+                  "nativebind_generator read Thermo::calibrate as void(double); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::spawnZone, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<::nativebind::glue::shape::Int, ::nativebind::glue::shape::String>>>,
+                  "nativebind_generator read Thermo::spawnZone as void(int, string); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::destroyZone, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<::nativebind::glue::shape::Int>>>,
+                  "nativebind_generator read Thermo::destroyZone as void(int); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::emitOverTemp, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<::nativebind::glue::shape::Double>>>,
+                  "nativebind_generator read Thermo::emitOverTemp as void(double); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::addReading, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<::nativebind::glue::shape::Struct<::Reading>>>>,
+                  "nativebind_generator read Thermo::addReading as void(Reading); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::setRoomTemp, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<::nativebind::glue::shape::Double>>>,
+                  "nativebind_generator read Thermo::setRoomTemp as void(double); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::limitSetpoint, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<::nativebind::glue::shape::Double>>>,
+                  "nativebind_generator read Thermo::limitSetpoint as void(double); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::installGuard, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<::nativebind::glue::shape::Int>>>,
+                  "nativebind_generator read Thermo::installGuard as void(int); please report this");
     static_assert(static_cast<long long>(::Stage::Off) == 0LL,
                   "nativebind_generator read Stage::Off as 0; please report this");
     static_assert(static_cast<long long>(::Stage::Low) == 1LL,
@@ -180,12 +208,14 @@ struct nativebind::glue::Invoker<::Zone> {
         {"ticks", ::nativebind::tagOf<decltype(Self::ticks)::value_type>()},
     };
 
-    static_assert(::nativebind::tagOf<decltype(Self::label)::value_type>() == ::nativebind::Tag::String,
-                  "nativebind_generator read Zone::label as std::string; please report this");
-    static_assert(::nativebind::tagOf<decltype(Self::temp)::value_type>() == ::nativebind::Tag::Double,
+    static_assert(::nativebind::glue::hasShape<decltype(Self::label)::value_type, ::nativebind::glue::shape::String>,
+                  "nativebind_generator read Zone::label as string; please report this");
+    static_assert(::nativebind::glue::hasShape<decltype(Self::temp)::value_type, ::nativebind::glue::shape::Double>,
                   "nativebind_generator read Zone::temp as double; please report this");
-    static_assert(::nativebind::tagOf<decltype(Self::ticks)::value_type>() == ::nativebind::Tag::Int,
+    static_assert(::nativebind::glue::hasShape<decltype(Self::ticks)::value_type, ::nativebind::glue::shape::Int>,
                   "nativebind_generator read Zone::ticks as int; please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::bump, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<>>>,
+                  "nativebind_generator read Zone::bump as void(); please report this");
 
     static void invoke(::nativebind::Module& m, uint16_t method, ::nativebind::Reader& args, ::nativebind::Writer& result) {
         auto& self = static_cast<Self&>(m);

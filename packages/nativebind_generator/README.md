@@ -86,8 +86,11 @@ come from `///< @label Text` on the enumerator, or are derived from its name
 The generator reads C++ with a purpose-built parser, not a compiler. The
 generated glue therefore asks the compiler to confirm what the parser read:
 
-- A `static_assert` per property, list, struct field and enumerator checks the
-  wire type and value against the real declaration.
+- A `static_assert` per property, list, struct field, signal and method checks
+  the whole type the generator read (nested types included: the item type of
+  a `std::vector`, the value of a `std::optional`, which enum or struct)
+  against the real declaration, including method parameters and return types.
+  One per enumerator checks its value.
 - A structured binding over each struct fails to compile if the struct has a
   field the generator did not see.
 - At runtime, the library checks property names and order when a module is

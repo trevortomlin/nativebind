@@ -72,6 +72,32 @@ class M {
         'is not a constant nativebind can read');
   });
 
+  test('enum values outside the 32-bit wire range', () {
+    // The wire carries enums as i32: 0xFFFFFFFF would arrive in Dart as -1.
+    expectError(module('    NATIVEBIND_READ(E, e, E::A)', prelude: 'enum class E : uint32_t { A = 0, Big = 0xFFFFFFFF };'),
+        'E::Big = 4294967295 does not fit', hint: 'int32');
+    expectError(module('    NATIVEBIND_READ(E, e, E::A)', prelude: 'enum class E : int64_t { A = -2147483649 };'),
+        'E::A = -2147483649 does not fit');
+    // implicit values count up past the limit too
+    expectError(module('    NATIVEBIND_READ(E, e, E::A)', prelude: 'enum class E { A = 0x7fffffff, B };'),
+        'E::B = 2147483648 does not fit');
+    // also when the enum is only reached through a struct field
+    expectError(
+        module('    NATIVEBIND_READ(S, s, {})',
+            prelude: 'enum class E : uint32_t { Big = 0x80000000 };\nstruct S { E e{}; };'),
+        'E::Big = 2147483648 does not fit');
+  });
+
+  test('wide enums that never cross the binding are fine', () {
+    final out = generate({
+      'm.cpp': module('    NATIVEBIND_READ(E, e, E::A)',
+          prelude: 'enum class Flags : uint64_t { All = 0x7FFFFFFFFFFFFFFF };\n'
+              'enum class E { Lo = -2147483648, A = 0, Hi = 2147483647 };'),
+    });
+    expect(out['m.nb.dart'], contains('hi(2147483647'));
+    expect(out['m.nb.dart'], contains('lo(-2147483648'));
+  });
+
   test('Dart name clashes', () {
     expectError(module('    NATIVEBIND_PROP(int, instance, 0)'), 'clashes with the generated M.instance');
     expectError(module('    NATIVEBIND_PROP(int, a_b, 0)\n    NATIVEBIND_PROP(int, aB, 0)'), 'are both `aB` in Dart');

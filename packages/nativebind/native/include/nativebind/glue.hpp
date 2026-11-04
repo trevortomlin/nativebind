@@ -1,6 +1,6 @@
 #pragma once
 // Interface between generated code (`*.nb.cpp`, written by
-// `dart run nativebind:generate`) and the runtime. Application code never uses
+// `nativebind_generator`) and the runtime. Application code never uses
 // this header directly.
 
 #include <memory>
@@ -13,6 +13,7 @@
 
 #include "nativebind/codec.hpp"
 #include "nativebind/module.hpp"
+#include "nativebind/signal.hpp"
 #include "nativebind/types.hpp"
 
 namespace nativebind {
@@ -122,6 +123,101 @@ void call(S& self, R (C::*fn)(A...) const noexcept, Reader& args, Writer& result
 }
 
 [[noreturn]] void unknownMethod(const char* module, uint16_t method);
+
+// ------------------------------------------------------------------ shapes
+//
+// The wire shape of a C++ type as a type, so the generated code can check
+// with static_assert that the generator read every property, list item,
+// struct field, signal argument, parameter and return type the way the
+// compiler does, nested types included. All integer types are Int.
+
+namespace shape {
+struct Void {};
+struct Bool {};
+struct Int {};
+struct Double {};
+struct String {};
+struct Time {};
+struct Duration {};
+struct Any {};  ///< in Enum<Any> / Struct<Any>: a type the generator did not see declared
+template <class T>
+struct List {};
+template <class T>
+struct Optional {};
+template <class E>
+struct Enum {};
+template <class S>
+struct Struct {};
+template <class... A>
+struct Args {};
+template <class R, class A>
+struct Fn {};
+}  // namespace shape
+
+namespace shapes {
+template <class T>
+auto shapeOf() {
+    using U = std::remove_cvref_t<T>;
+    if constexpr (std::is_void_v<U>) return shape::Void{};
+    else if constexpr (std::is_same_v<U, bool>) return shape::Bool{};
+    else if constexpr (std::is_enum_v<U>) return shape::Enum<U>{};
+    else if constexpr (std::is_integral_v<U>) return shape::Int{};
+    else if constexpr (std::is_floating_point_v<U>) return shape::Double{};
+    else if constexpr (::nativebind::detail::is_string_like<U>) return shape::String{};
+    else if constexpr (::nativebind::detail::is_vector<U>::value) return shape::List<decltype(shapeOf<typename U::value_type>())>{};
+    else if constexpr (::nativebind::detail::is_optional<U>::value) return shape::Optional<decltype(shapeOf<typename U::value_type>())>{};
+    else if constexpr (::nativebind::detail::is_sys_time<U>::value) return shape::Time{};
+    else if constexpr (::nativebind::detail::is_duration<U>::value) return shape::Duration{};
+    else return shape::Struct<U>{};
+}
+
+template <class F>
+struct MethodShape;
+template <class C, class R, class... A>
+struct MethodShape<R (C::*)(A...)> {
+    using type = shape::Fn<decltype(shapeOf<R>()), shape::Args<decltype(shapeOf<A>())...>>;
+};
+template <class C, class R, class... A>
+struct MethodShape<R (C::*)(A...) const> : MethodShape<R (C::*)(A...)> {};
+template <class C, class R, class... A>
+struct MethodShape<R (C::*)(A...) noexcept> : MethodShape<R (C::*)(A...)> {};
+template <class C, class R, class... A>
+struct MethodShape<R (C::*)(A...) const noexcept> : MethodShape<R (C::*)(A...)> {};
+
+template <class S>
+struct SignalShape;
+template <class... A>
+struct SignalShape<Signal<A...>> {
+    using type = shape::Args<decltype(shapeOf<A>())...>;
+};
+
+/// Actual shape A matches expected shape E (Any stands for any enum or struct).
+template <class A, class E>
+struct Matches : std::is_same<A, E> {};
+template <class S>
+struct Matches<shape::Enum<S>, shape::Enum<shape::Any>> : std::bool_constant<std::is_enum_v<S>> {};
+template <class S>
+struct Matches<shape::Struct<S>, shape::Struct<shape::Any>> : std::true_type {};
+template <class A, class E>
+struct Matches<shape::List<A>, shape::List<E>> : Matches<A, E> {};
+template <class A, class E>
+struct Matches<shape::Optional<A>, shape::Optional<E>> : Matches<A, E> {};
+template <class... A, class... E>
+    requires(sizeof...(A) == sizeof...(E))
+struct Matches<shape::Args<A...>, shape::Args<E...>> : std::bool_constant<(Matches<A, E>::value && ...)> {};
+template <class R, class A, class Q, class E>
+struct Matches<shape::Fn<R, A>, shape::Fn<Q, E>> : std::bool_constant<Matches<R, Q>::value && Matches<A, E>::value> {};
+}  // namespace shapes
+
+/// The C++ type T has wire shape E.
+template <class T, class E>
+inline constexpr bool hasShape = shapes::Matches<decltype(shapes::shapeOf<T>()), E>::value;
+/// The member function `fn` (any cv/noexcept) has shape E (shape::Fn<R, Args<...>>).
+template <auto fn, class E>
+inline constexpr bool methodHasShape = shapes::Matches<typename shapes::MethodShape<decltype(fn)>::type, E>::value;
+/// The signal type S (Signal<A...>) has argument shape E (shape::Args<...>).
+template <class S, class E>
+inline constexpr bool signalHasShape = shapes::Matches<typename shapes::SignalShape<S>::type, E>::value;
 
 /// Static registration of a struct codec.
 template <class T>

@@ -60,6 +60,47 @@ TEST(codec_time_and_duration) {
     CHECK_EQ(feed::valueOf(seconds(2)).i, 2'000'000);
 }
 
+namespace {
+std::vector<uint8_t> micros(Tag tag, int64_t us) {
+    std::vector<uint8_t> buf;
+    Writer w(buf);
+    w.tag(tag);
+    w.i64(us);
+    return buf;
+}
+template <class T>
+T decodeAs(const std::vector<uint8_t>& buf) {
+    Reader r(buf.data(), buf.size());
+    return r.value<T>();
+}
+}  // namespace
+
+TEST(codec_time_and_duration_out_of_range_are_rejected_not_wrapped) {
+    using namespace std::chrono;
+    constexpr int64_t year9999 = 253402300799000000;  // DateTime(9999, 12, 31, 23, 59, 59) from Dart
+    // system_clock counts nanoseconds on libstdc++: 2.5e20 ns does not fit.
+    if constexpr (std::ratio_less_v<system_clock::period, std::micro>) {
+        CHECK_THROWS(decodeAs<system_clock::time_point>(micros(Tag::Time, year9999)), DecodeError);
+        CHECK_THROWS(decodeAs<system_clock::time_point>(micros(Tag::Time, -year9999)), DecodeError);
+    }
+    // ... but it does in a coarser time point.
+    const auto coarse = decodeAs<time_point<system_clock, seconds>>(micros(Tag::Time, year9999));
+    CHECK_EQ(coarse.time_since_epoch().count(), int64_t{253402300799});
+
+    CHECK_THROWS(decodeAs<nanoseconds>(micros(Tag::Duration, std::numeric_limits<int64_t>::max())), DecodeError);
+    CHECK_THROWS(decodeAs<nanoseconds>(micros(Tag::Duration, std::numeric_limits<int64_t>::min())), DecodeError);
+    CHECK_THROWS((decodeAs<duration<int32_t>>(micros(Tag::Duration, int64_t{1} << 60))), DecodeError);
+    CHECK_EQ(decodeAs<nanoseconds>(micros(Tag::Duration, -1500)).count(), int64_t{-1'500'000});
+    CHECK_EQ(decodeAs<seconds>(micros(Tag::Duration, -1'500'000)).count(), int64_t{-1});  // truncates like duration_cast
+    CHECK_EQ(decodeAs<duration<double>>(micros(Tag::Duration, 1'500'000)).count(), 1.5);
+
+    // Encoding coarse values beyond the microsecond range saturates (Dart
+    // clamps such "never" sentinels) instead of overflowing.
+    CHECK_EQ(feed::valueOf(hours::max()).i, std::numeric_limits<int64_t>::max());
+    CHECK_EQ(feed::valueOf(hours::min()).i, std::numeric_limits<int64_t>::min());
+    CHECK_EQ(feed::valueOf(time_point<system_clock, seconds>::max()).i, std::numeric_limits<int64_t>::max());
+}
+
 TEST(codec_struct_uses_generated_codec) {
     Reading r{"floor", 23.25, {1, 2, 3}};
     CHECK(roundTrip(r) == r);
@@ -81,6 +122,13 @@ TEST(codec_unregistered_struct_is_a_clear_error) {
     std::vector<uint8_t> buf;
     Writer w(buf);
     CHECK_THROWS(w.value(NotGenerated{}), std::logic_error);
+    try {
+        w.value(NotGenerated{});
+    } catch (const std::logic_error& e) {
+        const std::string msg = e.what();
+        CHECK(msg.find("nativebind_add_modules") != std::string::npos);
+        CHECK(msg.find("nativebind generate") == std::string::npos);
+    }
 }
 
 TEST(codec_rejects_bad_input) {
@@ -136,4 +184,12 @@ TEST(codec_struct_field_count_mismatch) {
     w.value(1.0);
     Reader r(buf.data(), buf.size());
     CHECK_THROWS(r.value<Reading>(), DecodeError);
+    try {
+        Reader again(buf.data(), buf.size());
+        (void)again.value<Reading>();
+    } catch (const DecodeError& e) {
+        const std::string msg = e.what();
+        CHECK(msg.find("dart run nativebind_generator") != std::string::npos);
+        CHECK(msg.find("nativebind generate") == std::string::npos);
+    }
 }
