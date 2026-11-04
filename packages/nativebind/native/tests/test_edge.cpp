@@ -208,6 +208,24 @@ TEST(meta_updates_encode_every_field) {
     CHECK(c.pump().empty());
 }
 
+TEST(meta_label_may_come_from_a_temporary_string) {
+    feed::Started s;
+    feed::Consumer c;
+    c.pump();
+    auto& th = singleton<Thermo>();
+    {
+        std::string name = "Zone " + std::to_string(42) + " setpoint, long enough to live on the heap";
+        Meta m = th.setpoint.meta();
+        m.label = name.c_str();
+        th.setpoint.setMeta(m);
+        name.assign(name.size(), 'x');  // the caller reuses its buffer...
+    }  // ...and frees it before the feed is read
+    auto recs = c.pump();
+    CHECK_EQ(recs.size(), size_t{1});
+    CHECK_EQ(recs[0].label, std::string("Zone 42 setpoint, long enough to live on the heap"));
+    CHECK_EQ(th.setpoint.meta().label, std::string("Zone 42 setpoint, long enough to live on the heap"));
+}
+
 TEST(nan_and_infinity_cross_the_binding) {
     feed::Started s;
     feed::Consumer c;

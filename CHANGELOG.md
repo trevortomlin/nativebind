@@ -8,6 +8,13 @@ break the API).
 
 ## Unreleased
 
+### Changed
+
+- `nativebind::Meta::label` is a `std::string` (empty = derived from the
+  member name). A label built at run time used to dangle once its string was
+  freed. `.label = "..."` initializers are unchanged; code that tested
+  `label` against `nullptr` must test `label.empty()`.
+
 ### Fixed
 
 - A record the Dart side cannot decode (for example an enum value the Dart

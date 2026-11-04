@@ -103,7 +103,7 @@ void PropBase::encodeMeta(Writer& w) const {
     if (writable_) flags |= 1;
     if (enabled_) flags |= 2;
     w.u8(flags);
-    w.str(meta_.label ? meta_.label : "");
+    w.str(meta_.label);
     w.u16(static_cast<uint16_t>(meta_.attrs.size()));
     for (const Attr& a : meta_.attrs) {
         w.str(a.key);
