@@ -121,3 +121,45 @@ TEST(signals_are_not_queued_without_a_consumer) {
     c.pump();
     CHECK(c.mirror.signals.empty());
 }
+
+// Every sanitizer runtime (ASan, TSan) counts live heap bytes. GCC does not
+// ship the header that declares it.
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#define NATIVEBIND_TEST_ALLOCATED_BYTES 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+#define NATIVEBIND_TEST_ALLOCATED_BYTES 1
+#endif
+#endif
+#ifdef NATIVEBIND_TEST_ALLOCATED_BYTES
+extern "C" size_t __sanitizer_get_current_allocated_bytes();
+#endif
+
+TEST(disconnecting_an_owned_connection_releases_its_cleanup) {
+#ifdef NATIVEBIND_TEST_ALLOCATED_BYTES
+    feed::Started s;
+    auto& th = singleton<Thermo>();
+    Zone& z = spawn<Zone>(9, "dialog");
+    auto cycle = [&] { th.overTemp.disconnect(th.overTemp.connect(z, [](double) {})); };
+    for (int i = 0; i < 100; ++i) cycle();  // warm up (vector capacities)
+    const size_t before = __sanitizer_get_current_allocated_bytes();
+    for (int i = 0; i < 10000; ++i) cycle();  // a dialog that connects each time it opens
+    const size_t after = __sanitizer_get_current_allocated_bytes();
+    CHECK(after < before + 64 * 1024);  // was ~0.5 MB: one cleanup entry left per cycle
+    destroy(z);
+    CHECK(flush());
+#endif
+}
+
+TEST(disconnecting_while_the_owner_ends_is_safe) {
+    feed::Started s;
+    auto& th = singleton<Thermo>();
+    for (int i = 0; i < 200; ++i) {
+        Zone& z = spawn<Zone>(1000 + i, "racer");
+        const uint64_t id = th.overTemp.connect(z, [](double) {});
+        destroy(z);  // ends on the nativebind thread...
+        th.overTemp.disconnect(id);  // ...while this thread disconnects
+    }
+    CHECK(flush());
+    th.overTemp(1.0);  // no listener left, nothing dangling
+}

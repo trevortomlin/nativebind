@@ -149,7 +149,11 @@ SignalBase::SignalBase(Module* owner, const char* name)
     owner->signals_.push_back(this);
 }
 
-void SignalBase::endWith(Module& listener, std::function<void()> disconnect) { listener.atEnd(std::move(disconnect)); }
+uint64_t SignalBase::endWith(Module& listener, std::function<void()> disconnect) {
+    return listener.atEnd(std::move(disconnect));
+}
+
+void SignalBase::unendWith(Module& listener, uint64_t id) { listener.dropAtEnd(id); }
 
 uint64_t Module::atEnd(std::function<void()> fn) {
     std::lock_guard g(endsMutex_);
@@ -161,6 +165,11 @@ void Module::cancelAtEnd(uint64_t id) {
     std::unique_lock l(endsMutex_);
     if (std::erase_if(ends_, [id](const auto& e) { return e.first == id; }) > 0) return;
     endDone_.wait(l, [&] { return ending_ != id; });
+}
+
+void Module::dropAtEnd(uint64_t id) {
+    std::lock_guard g(endsMutex_);
+    std::erase_if(ends_, [id](const auto& e) { return e.first == id; });
 }
 
 void Module::endOwned() {

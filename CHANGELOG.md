@@ -41,6 +41,9 @@ break the API).
 
 ### Fixed
 
+- Disconnecting a connection made with `connect(Module&, fn)` also forgets
+  its cleanup on that module. Before, each one stayed registered until the
+  module was destroyed, so a module connecting repeatedly grew without bound.
 - `PropertyEdit` throttles writes by elapsed time instead of the wall clock,
   so a clock step during a drag (an NTP correction right after boot) no
   longer holds writes back or sends them in a burst.
