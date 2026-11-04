@@ -7,16 +7,27 @@ on:
 
 jobs:
   native:
-    name: C++ runtime (${{ matrix.compiler }}, ${{ matrix.sanitize }})
+    name: C++ runtime (${{ matrix.compiler }}, ${{ matrix.stdlib }}, ${{ matrix.sanitize }})
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         compiler: [gcc, clang]
+        stdlib: [libstdc++]
         sanitize: ["address,undefined", "thread"]
+        # Adds jobs: stdlib differs from every combination above.
+        include:
+          # libc++ (as on Android and macOS): its shared_mutex prefers
+          # writers, which changes how Batch and the drain interleave.
+          - compiler: clang
+            stdlib: libc++
+            sanitize: "address,undefined"
+          - compiler: clang
+            stdlib: libc++
+            sanitize: "thread"
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build ${{ matrix.stdlib == 'libc++' && 'libc++-dev libc++abi-dev' || '' }}
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -26,6 +37,8 @@ jobs:
         env:
           CC: ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }}
           CXX: ${{ matrix.compiler == 'clang' && 'clang++' || 'g++' }}
+          CXXFLAGS: ${{ matrix.stdlib == 'libc++' && '-stdlib=libc++' || '' }}
+          LDFLAGS: ${{ matrix.stdlib == 'libc++' && '-stdlib=libc++' || '' }}
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DNATIVEBIND_SANITIZE=${{ matrix.sanitize }}
           cmake --build build
@@ -62,3 +75,24 @@ jobs:
           flutter analyze
           flutter test
           flutter build linux --debug
+
+  dart-minimum:
+    name: Generator and Dart runtime on the oldest supported Flutter (3.24)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build clang cmake
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.24.0
+          cache: true
+      - name: Generator
+        working-directory: packages/nativebind_generator
+        run: |
+          dart pub get
+          dart test --exclude-tags perf
+      - name: Dart runtime
+        working-directory: packages/nativebind
+        run: |
+          flutter pub get
+          flutter test --exclude-tags perf

@@ -54,6 +54,11 @@ target_compile_options(nativebind_runtime PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${NA
 if(NATIVEBIND_SANITIZE)
   target_compile_options(nativebind_runtime PUBLIC -fsanitize=${NATIVEBIND_SANITIZE} -fno-omit-frame-pointer)
   target_link_options(nativebind_runtime PUBLIC -fsanitize=${NATIVEBIND_SANITIZE})
+  if(NATIVEBIND_SANITIZE MATCHES "undefined")
+    # UBSan only prints by default; make undefined behavior fail the tests.
+    target_compile_options(nativebind_runtime PUBLIC -fno-sanitize-recover=all)
+    target_link_options(nativebind_runtime PUBLIC -fno-sanitize-recover=all)
+  endif()
 endif()
 
 if(NATIVEBIND_BUILD_TESTS)
