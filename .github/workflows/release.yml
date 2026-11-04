@@ -9,8 +9,8 @@ name: Release
 on:
   push:
     tags: ['v[0-9]+.[0-9]+.[0-9]+']
-  # A dry run of the whole pipeline on any branch: checks, CI and pub.dev's
-  # package validation, without publishing or creating a release.
+  # A dry run on any branch: the checks and CI, whose package job runs
+  # `pub publish --dry-run` for both packages. Nothing is published.
   workflow_dispatch:
 
 permissions:
@@ -51,29 +51,28 @@ jobs:
   publish-generator:
     name: Publish nativebind_generator
     needs: [check, ci]
-    if: github.event_name != 'push' || needs.check.outputs.generator-published != 'true'
+    if: github.event_name == 'push' && needs.check.outputs.generator-published != 'true'
     permissions:
       contents: read
       id-token: write # OIDC token for pub.dev
+    # Sets up Dart and Flutter (for both packages), dry-runs, then publishes.
     uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
     with:
-      environment: ${{ github.event_name == 'push' && 'pub.dev' || '' }}
+      environment: pub.dev
       working-directory: packages/nativebind_generator
-      test-run: ${{ github.event_name != 'push' }}
-      use-flutter: false
 
   publish-runtime:
     name: Publish nativebind
     needs: [check, ci]
-    if: github.event_name != 'push' || needs.check.outputs.runtime-published != 'true'
+    if: github.event_name == 'push' && needs.check.outputs.runtime-published != 'true'
     permissions:
       contents: read
       id-token: write # OIDC token for pub.dev
+    # Sets up Dart and Flutter (for both packages), dry-runs, then publishes.
     uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
     with:
-      environment: ${{ github.event_name == 'push' && 'pub.dev' || '' }}
+      environment: pub.dev
       working-directory: packages/nativebind
-      test-run: ${{ github.event_name != 'push' }}
 
   github-release:
     name: GitHub release

@@ -51,7 +51,8 @@ version can be [retracted](https://dart.dev/tools/pub/publishing#retract)).
 
 To try the pipeline without publishing, run the workflow by hand (Actions →
 Release → Run workflow, or `gh workflow run release.yml --ref <branch>`): it
-runs the checks, CI and pub.dev's package validation, and stops there.
+runs the version check and CI, including `pub publish --dry-run` for both
+packages, and stops there.
 
 ## One-time setup
 
