@@ -3,8 +3,8 @@ description: >-
   Generates the FFI glue and typed Dart view models for nativebind modules
   written in C++. Run `dart run nativebind_generator`.
 version: 0.1.0
-repository: https://github.com/nativebind-hmi/nativebind
-issue_tracker: https://github.com/nativebind-hmi/nativebind/issues
+repository: https://github.com/trevortomlin/nativebind
+issue_tracker: https://github.com/trevortomlin/nativebind/issues
 topics: [ffi, codegen, mvvm, cpp]
 
 environment:
