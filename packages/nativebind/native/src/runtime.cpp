@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <future>
 #include <stdexcept>
@@ -26,6 +27,16 @@ std::atomic<uint32_t> gNextHandle{0};
 std::atomic<uint64_t> gNextTimer{0};
 std::atomic<bool> gRuntimeAlive{false};
 thread_local std::string tlsError;
+
+void stopAtExit() {
+    if (!gRuntimeAlive.load()) return;
+    try {
+        Runtime::get().stop();
+    } catch (const std::exception& e) {
+        logf("stopping at exit failed: %s", e.what());
+    } catch (...) {
+    }
+}
 
 }  // namespace
 
@@ -109,6 +120,12 @@ void Runtime::start() {
         }
         for (Module* m : created) runGuarded([m] { m->onStart(); }, m->type_->name);
     });
+    // If the app exits without stopping (a desktop window closed), stop from
+    // an exit handler registered now: handlers and static destructors run in
+    // reverse order, so onStop runs while everything constructed before this
+    // point (the app's objects, and what the modules set up in onStart) is
+    // still alive. ~Runtime would run it only after all of those are gone.
+    std::atexit(stopAtExit);
 }
 
 void Runtime::stop() {

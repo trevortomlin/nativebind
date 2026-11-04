@@ -37,6 +37,9 @@ break the API).
 
 ### Fixed
 
+- If the app exits without stopping nativebind, `onStop` runs from an exit
+  handler registered at `start()`, before the app's objects that existed by
+  then are destroyed. Before, it ran from a static destructor after them.
 - When the native library cannot be loaded, the error lists the system
   loader's reason for each path tried (missing dependency, undefined
   symbol, wrong architecture) instead of only the paths. A library that

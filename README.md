@@ -476,10 +476,12 @@ protected:
 | `onStart()` | anything that needs other modules (`property<T>`, `singleton<T>`, typed references) and timers |
 | `onStop()` | stopping workers, closing devices |
 
-Call `NativeBind.stop()` (or `nativebind::stop()` in a native host) before
-the app exits. Otherwise the runtime stops from a static destructor during
-process exit, and `onStop` runs while other static objects (in your code or
-in libraries) may already be destroyed.
+If the app exits without calling `NativeBind.stop()` (or `nativebind::stop()`
+in a native host), the runtime stops from an exit handler registered when it
+started. `onStop` then runs before the static objects that existed by the end
+of `start()` (including what modules set up in `onStart`) are destroyed, but
+after those first used later. Calling `NativeBind.stop()` before exiting, for
+example from an `AppLifecycleListener`'s `onExitRequested`, avoids that limit.
 
 Timers and posting, all on the nativebind thread and cancelled automatically
 when the module is destroyed:
