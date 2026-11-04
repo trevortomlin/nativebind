@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call: # release.yml runs it on the tagged commit before publishing
 
 jobs:
   native:
@@ -103,3 +104,22 @@ jobs:
         run: |
           flutter pub remove flutter_lints
           flutter test --exclude-tags perf
+
+  package:
+    name: Packages (versions agree, publish dry run)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: dart tool/release.dart check
+      # Fails on any warning pub.dev would give, so a release cannot be
+      # blocked by the archive itself.
+      - name: Generator
+        working-directory: packages/nativebind_generator
+        run: dart pub get && dart pub publish --dry-run
+      - name: Runtime
+        working-directory: packages/nativebind
+        run: flutter pub get && flutter pub publish --dry-run

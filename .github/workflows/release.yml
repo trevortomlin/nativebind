@@ -1,0 +1,100 @@
+name: Release
+
+# Pushing a tag vX.Y.Z (see RELEASING.md) publishes both packages to pub.dev
+# and creates the GitHub release. pub.dev accepts only runs triggered by the
+# tag push itself, through its automated publishing (configured per package
+# on pub.dev: repository trevortomlin/nativebind, tag pattern v{{version}},
+# environment pub.dev).
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  # A dry run of the whole pipeline on any branch: checks, CI and pub.dev's
+  # package validation, without publishing or creating a release.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Versions and changelog match the tag
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      generator-published: ${{ steps.pub.outputs.generator }}
+      runtime-published: ${{ steps.pub.outputs.runtime }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - id: v
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(sed -n 's/^version: //p' packages/nativebind/pubspec.yaml)" >> "$GITHUB_OUTPUT"
+          fi
+      # A tag needs its changelog section; a dry run only that versions agree.
+      - run: dart tool/release.dart check ${{ github.event_name == 'push' && steps.v.outputs.version || '' }}
+      # A version already on pub.dev is skipped: the first release of a
+      # package is published by hand, and a rerun after a partial failure
+      # must not fail on what already went out.
+      - id: pub
+        run: |
+          echo "generator=$(dart tool/release.dart published nativebind_generator '${{ steps.v.outputs.version }}')" >> "$GITHUB_OUTPUT"
+          echo "runtime=$(dart tool/release.dart published nativebind '${{ steps.v.outputs.version }}')" >> "$GITHUB_OUTPUT"
+
+  ci:
+    name: CI on the tagged commit
+    uses: ./.github/workflows/ci.yml
+
+  publish-generator:
+    name: Publish nativebind_generator
+    needs: [check, ci]
+    if: github.event_name != 'push' || needs.check.outputs.generator-published != 'true'
+    permissions:
+      contents: read
+      id-token: write # OIDC token for pub.dev
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
+    with:
+      environment: ${{ github.event_name == 'push' && 'pub.dev' || '' }}
+      working-directory: packages/nativebind_generator
+      test-run: ${{ github.event_name != 'push' }}
+      use-flutter: false
+
+  publish-runtime:
+    name: Publish nativebind
+    needs: [check, ci]
+    if: github.event_name != 'push' || needs.check.outputs.runtime-published != 'true'
+    permissions:
+      contents: read
+      id-token: write # OIDC token for pub.dev
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
+    with:
+      environment: ${{ github.event_name == 'push' && 'pub.dev' || '' }}
+      working-directory: packages/nativebind
+      test-run: ${{ github.event_name != 'push' }}
+
+  github-release:
+    name: GitHub release
+    needs: [check, publish-generator, publish-runtime]
+    # Also when a publish job was skipped because the version was already out.
+    if: ${{ github.event_name == 'push' && !failure() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Create the release from the changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          dart tool/release.dart notes "$VERSION" > notes.md
+          cat >> notes.md <<NOTES
+
+          **pub.dev:** [nativebind $VERSION](https://pub.dev/packages/nativebind/versions/$VERSION) ·
+          [nativebind_generator $VERSION](https://pub.dev/packages/nativebind_generator/versions/$VERSION)
+          NOTES
+          gh release create "$GITHUB_REF_NAME" --title "nativebind $VERSION" --notes-file notes.md --verify-tag

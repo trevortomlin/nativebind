@@ -353,10 +353,11 @@ model consistent.
 
 ## Status
 
-Version 0.1.0 is the first public release. The API may still change before
-1.0; breaking changes are listed in [CHANGELOG.md](CHANGELOG.md). The wire
-format and C ABI are versioned (`NATIVEBIND_ABI_VERSION`), and the Dart side
-refuses to talk to a library with a different version.
+nativebind is in 0.x: the API may still change before 1.0, and breaking
+changes are listed in [CHANGELOG.md](CHANGELOG.md). The wire format and C ABI
+are versioned (`NATIVEBIND_ABI_VERSION`), and the Dart side refuses to talk to
+a library with a different version. Releases are described in
+[RELEASING.md](RELEASING.md).
 
 ## License
 
