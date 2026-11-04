@@ -17,6 +17,10 @@ break the API).
 
 ### Fixed
 
+- After a hot restart, property writes are numbered past the
+  acknowledgments C++ still holds from the previous isolate. Before, a new
+  write could count as acknowledged by an old ack: a C++-side change
+  dropped the optimistic value and `write()` completed with the old value.
 - A UI write is clamped to the range, and refused if the property is
   disabled, as they are when the write runs on the nativebind thread. Before,
   a `setRange` or `setEnabled(false)` made between the write arriving and

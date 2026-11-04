@@ -229,6 +229,35 @@ void main() {
     expect(() => z.label.beginEdit(), throwsA(isA<BindInstanceGone>()));
   });
 
+  test('after a hot restart, writes are numbered past the acks C++ still holds', () async {
+    // The previous isolate wrote setpoint up to seq 500; C++ keeps that ack
+    // and reports it in the full state the new isolate attaches to.
+    final f = FakeNative(nativebindModules);
+    f.feed
+      ..resync()
+      ..added(thermo, f.idOf('Thermo'))
+      ..meta(thermo, 0, min: 15, max: 30, step: 0.5)
+      ..prop(thermo, 0, d(21.5), ack: 500)
+      ..listReset(thermo, 0, 1, []);
+    f.publish();
+    await NativeBind.start(native: f, modules: nativebindModules);
+    final sp = Thermo.instance.setpoint;
+
+    final kept = sp.write(23);
+    final seq = f.writes.single.id;
+    expect(BoundProperty.seqReached(500, seq), isFalse, reason: 'seq $seq is already covered by the old ack');
+
+    // C++ changes the value on its own before it gets to the write: the old
+    // ack must not count as acknowledging it.
+    push(f, (feed) => feed.prop(thermo, 0, d(20), ack: 500));
+    expect(sp.isPending, isTrue);
+    expect(sp.value, 23);
+
+    push(f, (feed) => feed.prop(thermo, 0, d(23), ack: seq));
+    expect(await kept, 23);
+    expect(sp.isPending, isFalse);
+  });
+
   group('one bad record does not poison its batch', () {
     late List<FlutterErrorDetails> errors;
     setUp(() {

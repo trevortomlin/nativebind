@@ -69,6 +69,7 @@ final class PropSlot {
   }
 
   void applyValue(Object? value, int ack) {
+    instance.runtime.observeAck(ack);
     final b = bound;
     b?.$takeRemote(value); // decodes first: throws (e.g. an unknown enum value) before anything changes
     raw = value;

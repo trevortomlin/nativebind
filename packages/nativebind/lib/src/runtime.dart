@@ -122,6 +122,13 @@ final class NativeBind {
   /// Module type names known to the Dart side.
   Iterable<String> get moduleNames => _types.values.map((t) => t.name);
 
+  /// Keeps [nextSeq] past every acknowledgment C++ reports. After a hot
+  /// restart C++ still holds the acks of the previous isolate's writes; new
+  /// writes numbered from 1 would count as already acknowledged.
+  void observeAck(int ack) {
+    if (((_seq - ack) & 0xffffffff) >= 0x80000000) _seq = ack; // ack is ahead of _seq
+  }
+
   int nextSeq() {
     _seq = (_seq + 1) & 0xffffffff;
     if (_seq == 0) _seq = 1;
