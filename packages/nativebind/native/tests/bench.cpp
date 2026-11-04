@@ -236,6 +236,24 @@ int main(int argc, char** argv) {
         report("encode struct, 4 threads at once (per encode)", ns[2], "ns", 500);
     }
 
+    // ---- the UI thread's share of a write: the nativebind_write call itself
+    {
+        Meta m = th.setpoint.meta();
+        m.label = "Living room setpoint";
+        m.attrs = {{"unit", "degrees Celsius"}, {"decimals", 1}, {"confirm", false}, {"hint", "Comfort temperature"}};
+        th.setpoint.setMeta(m);
+        nativebind_flush(5000);
+        nativebind_drain(&len);
+        const auto v = feed::encode(21.0);
+        uint32_t seq = 0;
+        report("nativebind_write call (4 attributes, no guard)", measure(20000, [&] {
+                   nativebind_write(th.handle(), 0, v.data(), static_cast<uint32_t>(v.size()), ++seq);
+               }),
+               "ns", 3000);
+        nativebind_flush(5000);
+        nativebind_drain(&len);
+    }
+
     // ---- round trips through the C ABI (what a touch costs end to end, minus Flutter)
     {
         uint32_t seq = 0;

@@ -721,21 +721,26 @@ int32_t Runtime::write(uint32_t instance, uint16_t prop, const uint8_t* data, si
         setLastError(std::string(m->type_->name) + "." + p.name() + " is read-only");
         return NATIVEBIND_E_READ_ONLY;
     }
+    // The metadata (label, attributes) is copied only for a guard to read: on
+    // the UI thread, that copy was most of the cost of a write.
+    const bool guarded = hasGuard();
     Meta meta;
     bool enabled;
     {
         std::lock_guard g(p.mutex_);
-        meta = p.meta_;
+        if (guarded) meta = p.meta_;
         enabled = p.enabled_;
     }
     if (!enabled) {
         setLastError(std::string(m->type_->name) + "." + p.name() + " is disabled");
         return NATIVEBIND_E_DISABLED;
     }
-    const std::string denied = checkGuard({GuardRequest::Kind::Write, m->type_->name, p.name(), &meta, 0});
-    if (!denied.empty()) {
-        setLastError(std::string(m->type_->name) + "." + p.name() + ": " + denied);
-        return NATIVEBIND_E_ACCESS;
+    if (guarded) {
+        const std::string denied = checkGuard({GuardRequest::Kind::Write, m->type_->name, p.name(), &meta, 0});
+        if (!denied.empty()) {
+            setLastError(std::string(m->type_->name) + "." + p.name() + ": " + denied);
+            return NATIVEBIND_E_ACCESS;
+        }
     }
     try {
         Reader r(data, len);
