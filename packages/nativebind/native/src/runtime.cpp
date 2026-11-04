@@ -30,6 +30,10 @@ thread_local std::string tlsError;
 
 void stopAtExit() {
     if (!gRuntimeAlive.load()) return;
+    if (Runtime::get().onLoopThread()) {
+        logf("exit() was called on the nativebind thread: modules are not stopped");
+        return;
+    }
     try {
         Runtime::get().stop();
     } catch (const std::exception& e) {
@@ -129,6 +133,10 @@ void Runtime::start() {
 }
 
 void Runtime::stop() {
+    // Checked before anything is stopped: from the nativebind thread, stop()
+    // would destroy the module whose code is running, then fail to join the
+    // thread it runs on.
+    if (loop_.onThread()) throw std::logic_error("nativebind::stop: called on the nativebind thread");
     std::lock_guard lk(lifecycle_);
     if (!started_) return;
     runSync([this] {

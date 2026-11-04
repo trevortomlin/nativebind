@@ -284,3 +284,25 @@ TEST(periodic_timer_period_is_respected) {
     CHECK(got <= 22);
 }
 
+TEST(stop_from_the_nativebind_thread_is_refused_and_changes_nothing) {
+    feed::Started s;
+    spawn<Zone>(21, "caller");
+    const int stopsBefore = Zone::stopCount.load();
+    std::string error;
+    post([&] {
+        try {
+            nativebind::stop();  // would destroy the module whose code is running
+        } catch (const std::logic_error& e) {
+            error = e.what();
+        }
+    });
+    CHECK(flush());
+    CHECK(error.find("nativebind thread") != std::string::npos);
+    CHECK_EQ(Zone::stopCount.load(), stopsBefore);  // no onStop ran
+    CHECK(started());
+    CHECK_EQ(instances<Zone>().size(), size_t{1});
+    nativebind::stop();  // from another thread it still works
+    CHECK(!started());
+    CHECK_EQ(Zone::stopCount.load(), stopsBefore + 1);
+}
+

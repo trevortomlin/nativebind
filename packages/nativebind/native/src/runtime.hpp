@@ -34,6 +34,7 @@ const char* lastError() noexcept;
 class Runtime {
 public:
     static Runtime& get();
+    bool onLoopThread() const noexcept { return loop_.onThread(); }
     ~Runtime();
 
     // lifecycle

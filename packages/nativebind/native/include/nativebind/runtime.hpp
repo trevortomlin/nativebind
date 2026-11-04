@@ -31,7 +31,8 @@ void destroy(uint32_t handle);
 /// calls their onStart. Idempotent.
 void start();
 /// Calls onStop on every module (newest first), destroys them and stops the
-/// nativebind thread. Idempotent.
+/// nativebind thread. Idempotent. Throws std::logic_error, before stopping
+/// anything, when called on the nativebind thread.
 void stop();
 bool started() noexcept;
 /// Waits until everything posted to the nativebind thread so far has run.

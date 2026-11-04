@@ -37,6 +37,10 @@ break the API).
 
 ### Fixed
 
+- `nativebind::stop()` called on the nativebind thread throws before
+  stopping anything. Before, it ran every `onStop` and destroyed the modules
+  (including the one whose code was running), then threw and left the
+  thread running. `exit()` called from a nativebind task no longer aborts.
 - If the app exits without stopping nativebind, `onStop` runs from an exit
   handler registered at `start()`, before the app's objects that existed by
   then are destroyed. Before, it ran from a static destructor after them.
