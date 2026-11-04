@@ -70,14 +70,30 @@ final class FfiNative implements BindNative {
       if (!name.contains('/')) ...['$exeDir/lib/$name', '$exeDir/$name'],
     ];
     for (final c in candidates) {
-      tried.add(c);
+      final DynamicLibrary lib;
       try {
-        return FfiNative(DynamicLibrary.open(c));
-      } on ArgumentError {
+        lib = DynamicLibrary.open(c);
+      } on ArgumentError catch (e) {
+        tried.add('$c: ${_loaderReason(c, e)}');
         continue;
       }
+      if (!lib.providesSymbol('nativebind_abi_version')) {
+        throw BindNotStarted('"$c" was loaded but does not export nativebind_abi_version, so it is not a '
+            'nativebind library: build it with nativebind_add_modules, and if you hide symbols, keep the '
+            'nativebind_* functions exported');
+      }
+      return FfiNative(lib);
     }
-    throw BindNotStarted('cannot load the native library "$name" (tried ${tried.join(', ')})');
+    throw BindNotStarted('cannot load the native library "$name". Tried:\n  ${tried.join('\n  ')}');
+  }
+
+  /// The system loader's message without the parts that repeat the path.
+  static String _loaderReason(String path, ArgumentError e) {
+    var m = '${e.message}';
+    final prefix = "Failed to load dynamic library '$path': ";
+    if (m.startsWith(prefix)) m = m.substring(prefix.length);
+    if (m.startsWith('$path: ')) m = m.substring(path.length + 2);
+    return m.trim();
   }
 
   final int Function() _abiVersion;

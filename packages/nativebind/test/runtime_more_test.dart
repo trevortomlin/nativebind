@@ -1,6 +1,7 @@
 // More runtime behavior against the scripted native side.
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -257,6 +258,25 @@ void main() {
     expect(await kept, 23);
     expect(sp.isPending, isFalse);
   });
+
+  group('loading the native library', () {
+    test('reports why a library could not be loaded', () async {
+      final dir = Directory.systemTemp.createTempSync('nativebind');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final broken = File('${dir.path}/libbroken.so')..writeAsStringSync('not a library');
+      await expectLater(
+          NativeBind.start(library: broken.path, modules: nativebindModules),
+          throwsA(isA<BindNotStarted>().having((e) => e.message, 'message',
+              allOf(contains(broken.path), matches(RegExp(r'libbroken\.so: \S'))))));
+    });
+
+    test('reports a library that is not a nativebind library', () async {
+      await expectLater(
+          NativeBind.start(library: 'libm.so.6', modules: nativebindModules),
+          throwsA(isA<BindNotStarted>().having((e) => e.message, 'message',
+              allOf(contains('libm.so.6'), contains('nativebind_abi_version'), contains('nativebind_add_modules')))));
+    });
+  }, skip: Platform.isLinux ? false : 'uses Linux library names');
 
   group('one bad record does not poison its batch', () {
     late List<FlutterErrorDetails> errors;

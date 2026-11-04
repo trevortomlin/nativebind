@@ -26,6 +26,10 @@ break the API).
 
 ### Fixed
 
+- When the native library cannot be loaded, the error lists the system
+  loader's reason for each path tried (missing dependency, undefined
+  symbol, wrong architecture) instead of only the paths. A library that
+  loads but is not a nativebind library is reported as such.
 - Signals emitted while a full resync is pending (in `onStart`, right after
   an isolate attaches, or after a list gap) reach Flutter after the full
   state instead of being dropped. Signals are not queued while no isolate is
