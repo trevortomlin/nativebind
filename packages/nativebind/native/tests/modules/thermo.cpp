@@ -3,6 +3,7 @@
 
 #include <nativebind/nativebind.hpp>
 
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -93,10 +94,14 @@ public:
 
     std::atomic<bool> started{false};
     static inline std::atomic<int> stopCount{0};
+    static inline std::function<void()> stopHook;  // tests: runs in onStop
 
 protected:
     void onStart() override { started = true; }
-    void onStop() override { ++stopCount; }
+    void onStop() override {
+        ++stopCount;
+        if (stopHook) stopHook();
+    }
 
 private:
     int tickMs_;

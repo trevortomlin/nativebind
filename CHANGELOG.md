@@ -17,6 +17,10 @@ break the API).
 
 ### Fixed
 
+- `nativebind::spawn` while the runtime is stopping (from `onStop` or a
+  worker racing `stop()`) throws `std::logic_error`. Before, the instance
+  missed `onStop`, was never destroyed and carried over into the next
+  `start()`.
 - A record the Dart side cannot decode (for example an enum value the Dart
   enum does not have) is reported and skipped; the rest of its batch still
   applies, call results in it still complete, and the property, list or

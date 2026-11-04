@@ -116,6 +116,7 @@ private:
     // lifecycle
     std::mutex lifecycle_;
     std::atomic<bool> started_{false};
+    bool stopping_ = false;  // guarded by registry_: stop() took its snapshot of modules
     Loop loop_;
 
     // types (registered during static initialization)

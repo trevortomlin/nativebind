@@ -44,7 +44,8 @@ bool onNativeBindThread() noexcept;
 /// Creates an instance of an instanced module (NATIVEBIND_MODULE(T, .instanced = true)).
 /// `key` identifies it from Flutter (`Download.byKey(3)`) and must be unique per
 /// type. Callable from any thread; onStart runs on the nativebind thread. The
-/// runtime owns the instance until nativebind::destroy.
+/// runtime owns the instance until nativebind::destroy. Throws std::logic_error
+/// if the runtime is not started or is stopping (e.g. when called from onStop).
 template <class T, class... A>
 T& spawn(uint64_t key, A&&... args) {
     static_assert(std::is_base_of_v<Module, T>, "spawn<T>: T must derive from nativebind::Module");

@@ -117,7 +117,10 @@ void Runtime::stop() {
     runSync([this] {
         std::vector<uint32_t> handles;
         {
-            std::shared_lock reg(registry_);
+            // From here on spawn() is refused: an instance created after this
+            // snapshot would never be stopped and would outlive the run.
+            std::unique_lock reg(registry_);
+            stopping_ = true;
             handles = order_;
         }
         for (auto it = handles.rbegin(); it != handles.rend(); ++it) {
@@ -131,6 +134,10 @@ void Runtime::stop() {
         for (auto it = handles.rbegin(); it != handles.rend(); ++it) destroyNow(*it, false);
     });
     started_ = false;
+    {
+        std::unique_lock reg(registry_);
+        stopping_ = false;
+    }
     loop_.stop();
     {
         std::lock_guard g(eventsMutex_);
@@ -271,6 +278,7 @@ Module& Runtime::adopt(const std::type_info& t, std::unique_ptr<Module> module, 
     Module* m;
     {
         std::unique_lock reg(registry_);
+        if (stopping_) throw std::logic_error(std::string("nativebind::spawn: ") + type->name + ": the runtime is stopping");
         m = &registerLocked(*type, std::move(module), key);
     }
     postFor(m->handle_, [m] { runGuarded([m] { m->onStart(); }, m->type_->name); }, {});
