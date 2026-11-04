@@ -554,9 +554,25 @@ void Runtime::encodeFullState(Writer& w) {
     }
 }
 
+void Runtime::endBatch() {
+    commit_.unlock_shared();
+    if (drainDeferred_.exchange(false)) {
+        wakePending_.store(false);  // the deferred drain may have left it set
+        wake();
+    }
+}
+
 const std::vector<uint8_t>& Runtime::drain() {
     drainBuffer_.clear();
-    std::unique_lock commit(commit_);  // waits for open batches
+    // Never block the UI thread on a batch. If one is open, report nothing
+    // now; endBatch wakes the consumer. Flag first, then retry, so a batch
+    // that closes in between is not missed.
+    std::unique_lock commit(commit_, std::try_to_lock);
+    if (!commit.owns_lock()) {
+        drainDeferred_.store(true);
+        if (!commit.try_lock()) return drainBuffer_;
+    }
+    drainDeferred_.store(false);
     wakePending_.store(false);
     Writer w(drainBuffer_);
     std::shared_lock reg(registry_);

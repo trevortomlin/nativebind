@@ -39,9 +39,9 @@ final class FfiNative implements BindNative {
         _start = lib.lookupFunction<Int32 Function(), int Function()>('nativebind_start'),
         _stop = lib.lookupFunction<Void Function(), void Function()>('nativebind_stop'),
         _attachPort = lib.lookupFunction<Void Function(Int64), void Function(int)>('nativebind_attach_port'),
+        // Not a leaf call: encoding a full state (a resync) can take a while.
         _drain = lib.lookupFunction<Pointer<Uint8> Function(Pointer<Uint32>), Pointer<Uint8> Function(Pointer<Uint32>)>(
-            'nativebind_drain',
-            isLeaf: true),
+            'nativebind_drain'),
         _requestResync = lib.lookupFunction<Void Function(), void Function()>('nativebind_request_resync'),
         _typeId = lib.lookupFunction<Int32 Function(Pointer<Utf8>), int Function(Pointer<Utf8>)>('nativebind_type_id'),
         _typeSchema =

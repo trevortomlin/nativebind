@@ -104,8 +104,10 @@ private:
 
 /// Groups changes so Flutter applies them together: while any Batch is alive
 /// the change feed is not read, so the UI never sees half of an update (e.g.
-/// a new reading with an old timestamp). Nests; works on any thread.
-/// Keep batches short: they hold back UI updates. Never do I/O inside one.
+/// a new reading with an old timestamp). The UI thread never waits for a
+/// batch; it picks the changes up when the last open batch closes. Nests;
+/// works on any thread. Keep batches short: they hold back UI updates (from
+/// every module). Never do I/O inside one.
 ///
 ///     {
 ///         nativebind::Batch batch;
