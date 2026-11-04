@@ -34,6 +34,7 @@ const char* lastError() noexcept;
 class Runtime {
 public:
     static Runtime& get();
+    bool onLoopThread() const noexcept { return loop_.onThread(); }
     ~Runtime();
 
     // lifecycle
@@ -111,7 +112,8 @@ private:
     void encodeMetaRecord(Writer& w, const PropBase& p);
     Module* findLocked(uint32_t handle) const;
     const glue::ModuleType* typeFor(const std::type_info& t) const;
-    void enqueueResult(uint32_t callId, int32_t status, const std::vector<uint8_t>& value, const std::string& error);
+    void enqueueResult(uint64_t generation, uint32_t callId, int32_t status, const std::vector<uint8_t>& value,
+                       const std::string& error);
 
     // lifecycle
     std::mutex lifecycle_;
@@ -146,6 +148,10 @@ private:
 
     std::mutex wakeMutex_;
     std::atomic<bool> consumer_{false};  // a port or callback is attached
+    // Bumped (under eventsMutex_) whenever a consumer attaches. A call's result
+    // is delivered only to the consumer that made it: a new isolate numbers
+    // its calls from 1 again.
+    uint64_t consumerGeneration_ = 0;
     int64_t port_ = 0;
     void (*wakeCallback_)(void*) = nullptr;
     void* wakeUser_ = nullptr;

@@ -284,3 +284,35 @@ TEST(periodic_timer_period_is_respected) {
     CHECK(got <= 22);
 }
 
+TEST(stop_from_the_nativebind_thread_is_refused_and_changes_nothing) {
+    feed::Started s;
+    spawn<Zone>(21, "caller");
+    const int stopsBefore = Zone::stopCount.load();
+    std::string error;
+    post([&] {
+        try {
+            nativebind::stop();  // would destroy the module whose code is running
+        } catch (const std::logic_error& e) {
+            error = e.what();
+        }
+    });
+    CHECK(flush());
+    CHECK(error.find("nativebind thread") != std::string::npos);
+    CHECK_EQ(Zone::stopCount.load(), stopsBefore);  // no onStop ran
+    CHECK(started());
+    CHECK_EQ(instances<Zone>().size(), size_t{1});
+    nativebind::stop();  // from another thread it still works
+    CHECK(!started());
+    CHECK_EQ(Zone::stopCount.load(), stopsBefore + 1);
+}
+
+TEST(abi_rejects_a_null_buffer_with_a_length) {
+    feed::Started s;
+    auto& th = singleton<Thermo>();
+    CHECK_EQ(nativebind_write(th.handle(), 0, nullptr, 8, 1), NATIVEBIND_E_TYPE);
+    CHECK(std::string(nativebind_last_error()).find("null") != std::string::npos);
+    CHECK_EQ(nativebind_invoke(th.handle(), 1, nullptr, 8, 2), NATIVEBIND_E_TYPE);
+    CHECK(std::string(nativebind_last_error()).find("null") != std::string::npos);
+    CHECK(flush());
+}
+

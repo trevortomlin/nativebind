@@ -53,8 +53,12 @@ class BoundInstances<T extends ModuleProxy> extends ChangeNotifier
     implements ValueListenable<List<T>> {
   final _items = <T>[];
 
+  List<T>? _snapshot;
+
+  /// The instances as they are now, unmodifiable; later changes do not show
+  /// in a value already read.
   @override
-  List<T> get value => UnmodifiableListView(_items);
+  List<T> get value => _snapshot ??= List<T>.unmodifiable(_items);
   @override
   int get length => _items.length;
   @override
@@ -73,14 +77,26 @@ class BoundInstances<T extends ModuleProxy> extends ChangeNotifier
 
   void $add(T proxy) {
     var i = 0;
-    while (i < _items.length && _items[i].$key <= proxy.$key) {
+    while (i < _items.length && _keyCompare(_items[i].$key, proxy.$key) <= 0) {
       i++;
     }
     _items.insert(i, proxy);
+    _snapshot = null;
   }
 
-  void $remove(ModuleProxy proxy) => _items.remove(proxy);
-  void $clear() => _items.clear();
+  // Keys are C++ uint64 values carried in a Dart int's 64 bits: one at or
+  // above 2^63 is negative here. Compare them as unsigned, like C++ does.
+  static int _keyCompare(int a, int b) => (a ^ _signBit).compareTo(b ^ _signBit);
+  static const _signBit = -0x8000000000000000;
+
+  void $remove(ModuleProxy proxy) {
+    if (_items.remove(proxy)) _snapshot = null;
+  }
+
+  void $clear() {
+    _items.clear();
+    _snapshot = null;
+  }
   void $notify() => notifyListeners();
 }
 

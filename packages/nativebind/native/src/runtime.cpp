@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <future>
 #include <stdexcept>
@@ -26,6 +27,20 @@ std::atomic<uint32_t> gNextHandle{0};
 std::atomic<uint64_t> gNextTimer{0};
 std::atomic<bool> gRuntimeAlive{false};
 thread_local std::string tlsError;
+
+void stopAtExit() {
+    if (!gRuntimeAlive.load()) return;
+    if (Runtime::get().onLoopThread()) {
+        logf("exit() was called on the nativebind thread: modules are not stopped");
+        return;
+    }
+    try {
+        Runtime::get().stop();
+    } catch (const std::exception& e) {
+        logf("stopping at exit failed: %s", e.what());
+    } catch (...) {
+    }
+}
 
 }  // namespace
 
@@ -109,9 +124,19 @@ void Runtime::start() {
         }
         for (Module* m : created) runGuarded([m] { m->onStart(); }, m->type_->name);
     });
+    // If the app exits without stopping (a desktop window closed), stop from
+    // an exit handler registered now: handlers and static destructors run in
+    // reverse order, so onStop runs while everything constructed before this
+    // point (the app's objects, and what the modules set up in onStart) is
+    // still alive. ~Runtime would run it only after all of those are gone.
+    std::atexit(stopAtExit);
 }
 
 void Runtime::stop() {
+    // Checked before anything is stopped: from the nativebind thread, stop()
+    // would destroy the module whose code is running, then fail to join the
+    // thread it runs on.
+    if (loop_.onThread()) throw std::logic_error("nativebind::stop: called on the nativebind thread");
     std::lock_guard lk(lifecycle_);
     if (!started_) return;
     runSync([this] {
@@ -429,6 +454,7 @@ void Runtime::attachPort(int64_t port) {
         std::lock_guard g(eventsMutex_);
         events_.clear();  // queued for the previous consumer
         results_.clear();
+        ++consumerGeneration_;
     }
     consumer_ = port != 0;
     resync_ = true;
@@ -447,6 +473,7 @@ void Runtime::attachCallback(void (*cb)(void*), void* user) {
         std::lock_guard g(eventsMutex_);
         events_.clear();  // queued for the previous consumer
         results_.clear();
+        ++consumerGeneration_;
     }
     consumer_ = cb != nullptr;
     resync_ = true;
@@ -517,9 +544,11 @@ void Runtime::enqueueEvent(Rec kind, BuildFn build, const void* ctx) {
     wake();
 }
 
-void Runtime::enqueueResult(uint32_t callId, int32_t status, const std::vector<uint8_t>& value, const std::string& error) {
+void Runtime::enqueueResult(uint64_t generation, uint32_t callId, int32_t status, const std::vector<uint8_t>& value,
+                            const std::string& error) {
     {
         std::lock_guard g(eventsMutex_);
+        if (generation != consumerGeneration_) return;  // made by a consumer that is gone
         Writer w(results_);
         writeRecord(w, Rec::Result, [&](Writer& ww) {
             ww.u32(callId);
@@ -738,9 +767,14 @@ int32_t Runtime::invoke(uint32_t instance, uint16_t method, const uint8_t* data,
         }
     }
     std::vector<uint8_t> args(data, data + len);
+    uint64_t generation;
+    {
+        std::lock_guard g(eventsMutex_);
+        generation = consumerGeneration_;
+    }
     postFor(
         instance,
-        [this, m, method, args = std::move(args), callId] {
+        [this, m, method, args = std::move(args), callId, generation] {
             std::vector<uint8_t> out;
             Writer w(out);
             Reader r(args.data(), args.size());
@@ -762,9 +796,11 @@ int32_t Runtime::invoke(uint32_t instance, uint16_t method, const uint8_t* data,
                 status = NATIVEBIND_E_EXCEPTION;
                 error = "unknown exception";
             }
-            enqueueResult(callId, status, out, error);
+            enqueueResult(generation, callId, status, out, error);
         },
-        [this, callId] { enqueueResult(callId, NATIVEBIND_E_NO_INSTANCE, {}, "instance destroyed before the call ran"); });
+        [this, callId, generation] {
+            enqueueResult(generation, callId, NATIVEBIND_E_NO_INSTANCE, {}, "instance destroyed before the call ran");
+        });
     touch();
     return NATIVEBIND_OK;
 }

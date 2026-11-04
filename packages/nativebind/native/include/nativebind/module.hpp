@@ -92,6 +92,8 @@ private:
     uint64_t atEnd(std::function<void()> fn);
     /// Unregisters; if fn is running on another thread, waits for it.
     void cancelAtEnd(uint64_t id);
+    /// Unregisters if fn has not started; never waits.
+    void dropAtEnd(uint64_t id);
     /// Runs the atEnd functions, newest first. Called by the runtime.
     void endOwned();
 

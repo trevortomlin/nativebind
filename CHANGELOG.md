@@ -19,6 +19,10 @@ break the API).
 
 ### Changed
 
+- `BoundList.value` and `BoundInstances.value` are unmodifiable snapshots
+  (cached until the next change) instead of live views, so a value kept to
+  compare later still holds what it held when read. Indexing the list itself
+  still reads the current items.
 - The generated glue checks the full type the generator read for every
   property, list item, struct field, signal argument, method parameter and
   return type, nested types included, against the compiler's. Before, only
@@ -37,6 +41,30 @@ break the API).
 
 ### Fixed
 
+- Disconnecting a connection made with `connect(Module&, fn)` also forgets
+  its cleanup on that module. Before, each one stayed registered until the
+  module was destroyed, so a module connecting repeatedly grew without bound.
+- `PropertyEdit` throttles writes by elapsed time instead of the wall clock,
+  so a clock step during a drag (an NTP correction right after boot) no
+  longer holds writes back or sends them in a burst.
+- A method call whose arguments fail to encode returns a failed `Future`
+  instead of throwing at the call site.
+- `BoundList.changes` ends when the module instance is destroyed or
+  nativebind stops, like signal streams; before, it stayed open.
+- Instances with keys at or above 2^63 are ordered like C++ (unsigned) in
+  `instances`; they came first because Dart read the key as signed.
+- After a hot restart, a call the previous isolate made that finishes later
+  is no longer delivered to the new isolate, where it completed the call
+  with the same id (calls are numbered from 1 again) with the wrong result.
+- `nativebind_write` and `nativebind_invoke` return `NATIVEBIND_E_TYPE` for a
+  null buffer with a non-zero length instead of reading through it.
+- `nativebind::stop()` called on the nativebind thread throws before
+  stopping anything. Before, it ran every `onStop` and destroyed the modules
+  (including the one whose code was running), then threw and left the
+  thread running. `exit()` called from a nativebind task no longer aborts.
+- If the app exits without stopping nativebind, `onStop` runs from an exit
+  handler registered at `start()`, before the app's objects that existed by
+  then are destroyed. Before, it ran from a static destructor after them.
 - When the native library cannot be loaded, the error lists the system
   loader's reason for each path tried (missing dependency, undefined
   symbol, wrong architecture) instead of only the paths. A library that

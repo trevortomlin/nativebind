@@ -217,7 +217,9 @@ final class WireReader {
     return v;
   }
 
-  int u64() => i64(); // keys fit in 63 bits in practice
+  /// The 64 bits of a uint64 as a Dart int: values at or above 2^63 are
+  /// negative (instance keys keep their bits; ordering compares them unsigned).
+  int u64() => i64();
 
   int i64() {
     _need(8);

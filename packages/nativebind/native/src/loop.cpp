@@ -17,7 +17,15 @@ void runGuarded(const std::function<void()>& fn, const char* what) noexcept {
     }
 }
 
-Loop::~Loop() { stop(); }
+Loop::~Loop() {
+    // Destroyed on its own thread only when exit() is called from a task:
+    // the thread cannot join itself, and the process is ending anyway.
+    if (onThread()) {
+        thread_.detach();
+        return;
+    }
+    stop();
+}
 
 void Loop::start() {
     std::lock_guard g(mutex_);

@@ -379,3 +379,24 @@ TEST(type_registry) {
     CHECK_EQ(nativebind_abi_version(), NATIVEBIND_ABI_VERSION);
     CHECK_EQ(std::string(nativebind_status_message(NATIVEBIND_E_ACCESS)), std::string("access denied"));
 }
+
+TEST(a_call_from_a_previous_consumer_does_not_complete_a_new_one) {
+    feed::Started s;
+    auto& th = singleton<Thermo>();
+    constexpr uint16_t kFail = 3, kAdd = 1;
+    std::promise<void> gate;
+    std::shared_future<void> open = gate.get_future().share();
+    feed::Consumer before;  // the isolate before a hot restart (it never detaches)
+    before.pump();
+    post([open] { open.wait(); });
+    CHECK_EQ(nativebind_invoke(th.handle(), kFail, nullptr, 0, 7), NATIVEBIND_OK);  // still queued...
+    feed::Consumer after;  // ...when a hot restart attaches a new isolate, numbering calls from 1 again
+    after.pump();
+    gate.set_value();
+    CHECK(flush());
+    const auto args = feed::encode(2.0, 3.0);
+    CHECK_EQ(nativebind_invoke(th.handle(), kAdd, args.data(), static_cast<uint32_t>(args.size()), 7), NATIVEBIND_OK);
+    const auto results = feed::only(after.settle(), Rec::Result);
+    CHECK_EQ(results.size(), size_t{1});  // only the new isolate's call 7
+    CHECK_EQ(results.at(0).status, int32_t{NATIVEBIND_OK});
+}

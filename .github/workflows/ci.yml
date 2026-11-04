@@ -47,7 +47,7 @@ jobs:
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DNATIVEBIND_SANITIZE=${{ matrix.sanitize }}
           cmake --build build
-          ./build/tests/nativebind_tests
+          ctest --test-dir build -LE "integration|perf" --output-on-failure
           ctest --test-dir build -L integration --output-on-failure
 
   dart:

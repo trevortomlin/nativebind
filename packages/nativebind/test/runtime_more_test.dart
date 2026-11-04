@@ -117,6 +117,59 @@ void main() {
     expect(f.resyncRequests, 0);
   });
 
+  test('instances keyed above 2^63 are ordered like C++ (unsigned)', () async {
+    final f = await boot();
+    const high = -0x8000000000000000; // bits of 2^63: C++'s largest of the three
+    push(f, (feed) {
+      feed
+        ..added(20, f.idOf('Zone'), key: high)
+        ..added(21, f.idOf('Zone'), key: 5)
+        ..added(22, f.idOf('Zone'), key: 1);
+    });
+    expect(Zone.instances.map((z) => z.key).toList(), [1, 5, high]);
+    expect(Zone.byKey(high), isNotNull);
+  });
+
+  test('list change streams end when the instance goes, like signal streams', () async {
+    await boot();
+    var listDone = false, signalDone = false;
+    Thermo.instance.readings.changes.listen(null, onDone: () => listDone = true);
+    Thermo.instance.overTemp.listen(null, onDone: () => signalDone = true);
+    await NativeBind.stop();
+    await pumpEventQueue();
+    expect(signalDone, isTrue);
+    expect(listDone, isTrue);
+  });
+
+  test('a call whose arguments fail to encode fails its future, not the caller', () async {
+    final f = await boot();
+    late Future<void> call;
+    expect(() => call = Thermo.instance.$invoke(0, (w) => throw StateError('cannot encode'), voidCodec), returnsNormally);
+    await expectLater(call, throwsStateError);
+    expect(f.invokes, isEmpty); // nothing reached C++
+  });
+
+  test('a list or instances value is a snapshot that later changes leave alone', () async {
+    final f = await boot();
+    final list = Thermo.instance.readings;
+    push(f, (feed) => feed.listInsert(thermo, 0, 2, 0, reading('a', 0)));
+    final before = list.value;
+    push(f, (feed) {
+      feed
+        ..listInsert(thermo, 0, 3, 1, reading('b', 0))
+        ..listUpdate(thermo, 0, 4, 0, reading('a2', 0));
+    });
+    expect(before.map((r) => r.sensor), ['a']); // what the list was when read
+    expect(list.value.map((r) => r.sensor), ['a2', 'b']);
+    expect(identical(list.value, list.value), isTrue); // no copy per read
+
+    push(f, (feed) => feed.added(30, f.idOf('Zone'), key: 1));
+    final zones = Zone.instances.value;
+    push(f, (feed) => feed.added(31, f.idOf('Zone'), key: 2));
+    expect(zones.map((z) => z.key), [1]);
+    expect(Zone.instances.value.map((z) => z.key), [1, 2]);
+  });
+
   test('an instance re-added with a new handle gets a fresh proxy', () async {
     final f = await boot();
     push(f, (feed) => feed..added(10, f.idOf('Zone'), key: 4));

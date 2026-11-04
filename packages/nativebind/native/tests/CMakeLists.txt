@@ -23,6 +23,15 @@ target_compile_options(nativebind_tests PRIVATE ${NATIVEBIND_WARNINGS} -Wno-old-
 
 add_test(NAME nativebind_tests COMMAND nativebind_tests)
 
+# Exits without stopping the runtime; onStop must run before the app's
+# objects are destroyed. from-task: exit() from the nativebind thread.
+add_executable(nativebind_exit_check exit_check.cpp modules/thermo.nb.cpp)
+target_link_libraries(nativebind_exit_check PRIVATE nativebind::runtime)
+target_include_directories(nativebind_exit_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_options(nativebind_exit_check PRIVATE ${NATIVEBIND_WARNINGS} -Wno-old-style-cast)
+add_test(NAME nativebind_exit_check COMMAND nativebind_exit_check)
+add_test(NAME nativebind_exit_from_task COMMAND nativebind_exit_check from-task)
+
 # Builds tests/cmake_project the way an app would (needs `dart`): the
 # generator sees target_include_directories, and only nativebind_* is exported.
 add_test(NAME nativebind_cmake_integration

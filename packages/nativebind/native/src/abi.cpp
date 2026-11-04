@@ -4,6 +4,7 @@
 #include "nativebind/nativebind.h"
 
 #include <exception>
+#include <string>
 
 #include "runtime.hpp"
 
@@ -26,6 +27,14 @@ int32_t guarded(F&& f) noexcept {
         setLastError("unknown exception");
     }
     return NATIVEBIND_E_INTERNAL;
+}
+
+// A buffer the caller says has bytes but passed as null: refused before the
+// runtime copies from it.
+bool nullBuffer(const uint8_t* data, uint32_t len, const char* what) {
+    if (data || len == 0) return false;
+    setLastError(std::string(what) + " is null but its length is " + std::to_string(len));
+    return true;
 }
 
 }  // namespace
@@ -108,11 +117,13 @@ NATIVEBIND_API const char* nativebind_type_schema(int32_t id) {
 }
 
 NATIVEBIND_API int32_t nativebind_write(uint32_t instance, uint16_t prop, const uint8_t* value, uint32_t len, uint32_t seq) {
+    if (nullBuffer(value, len, "value")) return NATIVEBIND_E_TYPE;
     return guarded([&] { return Runtime::get().write(instance, prop, value, len, seq); });
 }
 
 NATIVEBIND_API int32_t nativebind_invoke(uint32_t instance, uint16_t method, const uint8_t* args, uint32_t len,
                                  uint32_t call_id) {
+    if (nullBuffer(args, len, "args")) return NATIVEBIND_E_TYPE;
     return guarded([&] { return Runtime::get().invoke(instance, method, args, len, call_id); });
 }
 
