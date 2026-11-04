@@ -70,11 +70,13 @@ NATIVEBIND_API const char* nativebind_type_schema(int32_t id);
 
 /* Writes a property from the UI. `value` is one encoded value; `seq` is
  * echoed back in the next Prop record of that property once the write was
- * processed (accepted or rejected). */
+ * processed (accepted or rejected). `value` may be null only when `len` is
+ * 0; otherwise the call returns NATIVEBIND_E_TYPE. */
 NATIVEBIND_API int32_t nativebind_write(uint32_t instance, uint16_t prop, const uint8_t* value, uint32_t len, uint32_t seq);
 
 /* Calls a method asynchronously. `args` is the encoded arguments in order.
- * The outcome arrives as a Result record carrying `call_id`. */
+ * The outcome arrives as a Result record carrying `call_id`. `args` may be
+ * null only when `len` is 0; otherwise the call returns NATIVEBIND_E_TYPE. */
 NATIVEBIND_API int32_t nativebind_invoke(uint32_t instance, uint16_t method, const uint8_t* args, uint32_t len,
                                  uint32_t call_id);
 

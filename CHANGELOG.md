@@ -37,6 +37,8 @@ break the API).
 
 ### Fixed
 
+- `nativebind_write` and `nativebind_invoke` return `NATIVEBIND_E_TYPE` for a
+  null buffer with a non-zero length instead of reading through it.
 - `nativebind::stop()` called on the nativebind thread throws before
   stopping anything. Before, it ran every `onStop` and destroyed the modules
   (including the one whose code was running), then threw and left the

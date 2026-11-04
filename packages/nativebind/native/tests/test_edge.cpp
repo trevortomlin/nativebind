@@ -306,3 +306,13 @@ TEST(stop_from_the_nativebind_thread_is_refused_and_changes_nothing) {
     CHECK_EQ(Zone::stopCount.load(), stopsBefore + 1);
 }
 
+TEST(abi_rejects_a_null_buffer_with_a_length) {
+    feed::Started s;
+    auto& th = singleton<Thermo>();
+    CHECK_EQ(nativebind_write(th.handle(), 0, nullptr, 8, 1), NATIVEBIND_E_TYPE);
+    CHECK(std::string(nativebind_last_error()).find("null") != std::string::npos);
+    CHECK_EQ(nativebind_invoke(th.handle(), 1, nullptr, 8, 2), NATIVEBIND_E_TYPE);
+    CHECK(std::string(nativebind_last_error()).find("null") != std::string::npos);
+    CHECK(flush());
+}
+
