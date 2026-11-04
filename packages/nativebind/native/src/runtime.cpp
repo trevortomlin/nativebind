@@ -454,6 +454,7 @@ void Runtime::attachPort(int64_t port) {
         std::lock_guard g(eventsMutex_);
         events_.clear();  // queued for the previous consumer
         results_.clear();
+        ++consumerGeneration_;
     }
     consumer_ = port != 0;
     resync_ = true;
@@ -472,6 +473,7 @@ void Runtime::attachCallback(void (*cb)(void*), void* user) {
         std::lock_guard g(eventsMutex_);
         events_.clear();  // queued for the previous consumer
         results_.clear();
+        ++consumerGeneration_;
     }
     consumer_ = cb != nullptr;
     resync_ = true;
@@ -542,9 +544,11 @@ void Runtime::enqueueEvent(Rec kind, BuildFn build, const void* ctx) {
     wake();
 }
 
-void Runtime::enqueueResult(uint32_t callId, int32_t status, const std::vector<uint8_t>& value, const std::string& error) {
+void Runtime::enqueueResult(uint64_t generation, uint32_t callId, int32_t status, const std::vector<uint8_t>& value,
+                            const std::string& error) {
     {
         std::lock_guard g(eventsMutex_);
+        if (generation != consumerGeneration_) return;  // made by a consumer that is gone
         Writer w(results_);
         writeRecord(w, Rec::Result, [&](Writer& ww) {
             ww.u32(callId);
@@ -763,9 +767,14 @@ int32_t Runtime::invoke(uint32_t instance, uint16_t method, const uint8_t* data,
         }
     }
     std::vector<uint8_t> args(data, data + len);
+    uint64_t generation;
+    {
+        std::lock_guard g(eventsMutex_);
+        generation = consumerGeneration_;
+    }
     postFor(
         instance,
-        [this, m, method, args = std::move(args), callId] {
+        [this, m, method, args = std::move(args), callId, generation] {
             std::vector<uint8_t> out;
             Writer w(out);
             Reader r(args.data(), args.size());
@@ -787,9 +796,11 @@ int32_t Runtime::invoke(uint32_t instance, uint16_t method, const uint8_t* data,
                 status = NATIVEBIND_E_EXCEPTION;
                 error = "unknown exception";
             }
-            enqueueResult(callId, status, out, error);
+            enqueueResult(generation, callId, status, out, error);
         },
-        [this, callId] { enqueueResult(callId, NATIVEBIND_E_NO_INSTANCE, {}, "instance destroyed before the call ran"); });
+        [this, callId, generation] {
+            enqueueResult(generation, callId, NATIVEBIND_E_NO_INSTANCE, {}, "instance destroyed before the call ran");
+        });
     touch();
     return NATIVEBIND_OK;
 }

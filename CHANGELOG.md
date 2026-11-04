@@ -37,6 +37,9 @@ break the API).
 
 ### Fixed
 
+- After a hot restart, a call the previous isolate made that finishes later
+  is no longer delivered to the new isolate, where it completed the call
+  with the same id (calls are numbered from 1 again) with the wrong result.
 - `nativebind_write` and `nativebind_invoke` return `NATIVEBIND_E_TYPE` for a
   null buffer with a non-zero length instead of reading through it.
 - `nativebind::stop()` called on the nativebind thread throws before
