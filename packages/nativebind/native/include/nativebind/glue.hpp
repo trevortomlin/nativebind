@@ -1,6 +1,6 @@
 #pragma once
 // Interface between generated code (`*.nb.cpp`, written by
-// `dart run nativebind:generate`) and the runtime. Application code never uses
+// `nativebind_generator`) and the runtime. Application code never uses
 // this header directly.
 
 #include <memory>

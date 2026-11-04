@@ -1,5 +1,5 @@
 // Test modules, written exactly like application modules: one file, no
-// header, no FFI. thermo.nb.cpp is the glue `nativebind generate` produces.
+// header, no FFI. thermo.nb.cpp is the glue nativebind_generator produces.
 
 #include <nativebind/nativebind.hpp>
 

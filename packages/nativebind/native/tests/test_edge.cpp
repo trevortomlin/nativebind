@@ -70,7 +70,10 @@ TEST(stale_generated_code_is_detected_at_adoption) {
     try {
         spawn<Mismatched>(1);
     } catch (const std::logic_error& e) {
-        threw = std::string(e.what()).find("re-run nativebind generate") != std::string::npos;
+        const std::string msg = e.what();
+        // Names the real tool, not an old command that does not exist.
+        threw = msg.find("nativebind_generator") != std::string::npos &&
+                msg.find("nativebind generate") == std::string::npos;
     }
     CHECK(threw);
     CHECK(instances<Mismatched>().empty());

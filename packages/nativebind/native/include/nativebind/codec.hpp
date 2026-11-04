@@ -218,7 +218,7 @@ public:
         const uint16_t n = u16();
         if (n != fieldCount)
             throw DecodeError("nativebind: struct has " + std::to_string(n) + " fields, expected " +
-                              std::to_string(fieldCount) + " (Dart and C++ out of sync? re-run nativebind generate)");
+                              std::to_string(fieldCount) + " (Dart and C++ out of sync? run `dart run nativebind_generator` and rebuild)");
     }
     /// Throws if unread bytes remain (e.g. too many method arguments).
     void finish() const {

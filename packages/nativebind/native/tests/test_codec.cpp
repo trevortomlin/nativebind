@@ -122,6 +122,13 @@ TEST(codec_unregistered_struct_is_a_clear_error) {
     std::vector<uint8_t> buf;
     Writer w(buf);
     CHECK_THROWS(w.value(NotGenerated{}), std::logic_error);
+    try {
+        w.value(NotGenerated{});
+    } catch (const std::logic_error& e) {
+        const std::string msg = e.what();
+        CHECK(msg.find("nativebind_add_modules") != std::string::npos);
+        CHECK(msg.find("nativebind generate") == std::string::npos);
+    }
 }
 
 TEST(codec_rejects_bad_input) {
@@ -177,4 +184,12 @@ TEST(codec_struct_field_count_mismatch) {
     w.value(1.0);
     Reader r(buf.data(), buf.size());
     CHECK_THROWS(r.value<Reading>(), DecodeError);
+    try {
+        Reader again(buf.data(), buf.size());
+        (void)again.value<Reading>();
+    } catch (const DecodeError& e) {
+        const std::string msg = e.what();
+        CHECK(msg.find("dart run nativebind_generator") != std::string::npos);
+        CHECK(msg.find("nativebind generate") == std::string::npos);
+    }
 }

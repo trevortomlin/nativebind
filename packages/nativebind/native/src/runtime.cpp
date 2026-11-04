@@ -218,7 +218,8 @@ Module& Runtime::registerLocked(const glue::ModuleType& type, std::unique_ptr<Mo
     // The generated glue and the class must agree, or indexes would be wrong.
     auto fail = [&](const std::string& what) {
         throw std::logic_error(std::string("module ") + type.name + ": " + what +
-                               " does not match the generated code; re-run nativebind generate");
+                               " does not match the generated code; rebuild the library so nativebind_generator regenerates "
+                               "its glue (nativebind_add_modules does this)");
     };
     if (m.props_.size() != type.propCount) fail("property count");
     for (size_t i = 0; i < m.props_.size(); ++i) {
