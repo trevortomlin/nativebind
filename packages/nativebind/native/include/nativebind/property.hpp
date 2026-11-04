@@ -177,33 +177,38 @@ private:
     void uiWrite(Reader& r, uint32_t seq) override {
         T v = r.template value<T>();
         r.finish();
-        if constexpr (std::is_arithmetic_v<T> && !std::is_same_v<T, bool>) {
-            double lo, hi;
-            {
-                std::lock_guard g(mutex_);
-                lo = meta_.min;
-                hi = meta_.max;
-            }
-            const double d = static_cast<double>(v);
-            if constexpr (std::is_integral_v<T>) {
-                if (d < lo) v = static_cast<T>(std::ceil(lo));
-                if (d > hi) v = static_cast<T>(std::floor(hi));
-            } else {
-                if (d < lo) v = static_cast<T>(lo);
-                if (d > hi) v = static_cast<T>(hi);
-            }
-        }
         detail::postFor(owner().handle(), [this, v = std::move(v), seq]() mutable { applyUiWrite(std::move(v), seq); });
     }
 
+    // Runs on the nativebind thread. The UI thread checked `enabled` when the
+    // write arrived, but C++ may have changed the metadata since: the range
+    // and the enabled flag are applied as they are now.
     void applyUiWrite(T v, uint32_t seq) {
+        bool enabled;
+        {
+            std::lock_guard g(mutex_);
+            enabled = enabled_;
+            if constexpr (std::is_arithmetic_v<T> && !std::is_same_v<T, bool>) {
+                const double d = static_cast<double>(v);
+                const double lo = meta_.min, hi = meta_.max;
+                if constexpr (std::is_integral_v<T>) {
+                    if (d < lo) v = static_cast<T>(std::ceil(lo));
+                    if (d > hi) v = static_cast<T>(std::floor(hi));
+                } else {
+                    if (d < lo) v = static_cast<T>(lo);
+                    if (d > hi) v = static_cast<T>(hi);
+                }
+            }
+        }
         std::optional<T> accepted;
-        try {
-            accepted = validator_ ? validator_(v) : std::optional<T>(std::move(v));
-        } catch (const std::exception& e) {
-            detail::logf("validator of %s threw: %s (write rejected)", name(), e.what());
-        } catch (...) {
-            detail::logf("validator of %s threw a non-std exception (write rejected)", name());
+        if (enabled) {
+            try {
+                accepted = validator_ ? validator_(v) : std::optional<T>(std::move(v));
+            } catch (const std::exception& e) {
+                detail::logf("validator of %s threw: %s (write rejected)", name(), e.what());
+            } catch (...) {
+                detail::logf("validator of %s threw a non-std exception (write rejected)", name());
+            }
         }
         {
             std::lock_guard g(mutex_);

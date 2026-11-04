@@ -148,7 +148,8 @@ generated `player.nb.hpp` and call `nativebind::ref::Player::get()`.
 ### Writes from the UI
 
 1. The runtime checks writability, enabled state and the guard
-   (`nativebind::setGuard`), then clamps to `[min, max]`.
+   (`nativebind::setGuard`) when the write arrives, then, on the nativebind
+   thread, checks enabled state again and clamps to the current `[min, max]`.
 2. `validate(fn)` may accept, reject or replace the value.
 3. `onWrite(fn)` runs after the value is stored.
 

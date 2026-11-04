@@ -368,10 +368,13 @@ volume.setStep(0.1);
 volume.setEnabled(false);      // shown disabled; UI writes are refused
 ```
 
-UI writes go through three stages, all on the nativebind thread:
+UI writes go through three stages:
 
-1. The runtime checks that the property is writable and enabled, asks the
-   guard, and clamps the value to `[min, max]`.
+1. When the write arrives, the runtime checks that the property is writable
+   and enabled and asks the guard; a refusal fails the write at once in Dart.
+   On the nativebind thread it checks `enabled` again and clamps the value to
+   `[min, max]` as they are then, so metadata C++ changed in the meantime
+   applies.
 2. `validate(fn)` may accept (`true`), reject (`false`), or replace the value
    (return a `T`, or a `std::optional<T>` that is `nullopt` to reject).
 3. `onWrite(fn)` runs after the value is stored. It is not called for changes

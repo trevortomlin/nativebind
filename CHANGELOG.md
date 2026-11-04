@@ -17,6 +17,10 @@ break the API).
 
 ### Fixed
 
+- A UI write is clamped to the range, and refused if the property is
+  disabled, as they are when the write runs on the nativebind thread. Before,
+  a `setRange` or `setEnabled(false)` made between the write arriving and
+  running did not apply to it. The guard is still asked only on arrival.
 - `nativebind::spawn` while the runtime is stopping (from `onStop` or a
   worker racing `stop()`) throws `std::logic_error`. Before, the instance
   missed `onStop`, was never destroyed and carried over into the next
