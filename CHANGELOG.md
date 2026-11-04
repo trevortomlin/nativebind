@@ -22,6 +22,11 @@ break the API).
 
 ### Changed
 
+- After `Worker::stop()`, `post` and `every` are ignored until `start()` is
+  called, for unowned workers too. Before, the next `post` silently started
+  the thread again, so a late post from another thread could bring I/O back
+  on resources closed in `onStop`. A worker never stopped still starts on its
+  first `post`.
 - `List::sync` takes O(n log n) time when the key has a `std::hash`, and no
   longer shifts rows in memory for each move: 5,000 shuffled rows take ~3 ms
   instead of ~250 ms, during which the list was locked. It emits the same

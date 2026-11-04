@@ -62,12 +62,14 @@ public:
     Worker(const Worker&) = delete;
     Worker& operator=(const Worker&) = delete;
 
-    /// Starts the thread (also done by the first post/every). Idempotent.
-    /// Does nothing once the owner module ended.
+    /// Starts the thread (also done by the first post/every), and resumes a
+    /// worker that stop() ended. Idempotent. Does nothing once the owner
+    /// module ended.
     void start();
     /// Stops accepting work, lets the current task finish, joins the thread and
     /// drops queued tasks. Idempotent; must not be called from the worker itself.
-    /// An unowned worker restarts on the next post/every.
+    /// Later post/every calls are ignored until start() is called, so a late
+    /// post cannot bring I/O back on resources closed after stop().
     void stop();
     bool running() const;
     /// True on this worker's thread.
@@ -90,6 +92,8 @@ public:
 
 private:
     void run();
+    void startIfIdle();
+    void startLocked();
 
     struct Periodic {
         Clock::time_point due;
@@ -107,7 +111,8 @@ private:
     std::atomic<std::thread::id> threadId_{};
     std::atomic<bool> stopping_{false};
     bool running_ = false;
-    bool ended_ = false;  // the owner module ended: no more work
+    bool stopped_ = false;  // stop() was called: post/every do not start it
+    bool ended_ = false;    // the owner module ended: no more work
     Module* owner_ = nullptr;
     uint64_t ownerEnd_ = 0;
 };

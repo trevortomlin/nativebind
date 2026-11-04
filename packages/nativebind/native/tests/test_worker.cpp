@@ -82,12 +82,18 @@ TEST(worker_survives_exceptions_and_stops_long_loops) {
     w.stop();  // idempotent
 }
 
-TEST(worker_restarts_after_stop) {
+TEST(a_stopped_worker_ignores_work_until_started_again) {
     Worker w;
     std::atomic<int> n{0};
-    w.post([&] { ++n; });
+    w.post([&] { ++n; });  // the first post starts it
     CHECK(waitFor([&] { return n.load() == 1; }));
-    w.stop();
+    w.stop();  // e.g. in onStop, after closing the port the worker reads
+    w.post([&] { ++n; });  // a late post from another thread...
+    w.every(1ms, [&] { ++n; });
+    std::this_thread::sleep_for(30ms);
+    CHECK_EQ(n.load(), 1);  // ...must not bring I/O back on closed resources
+    CHECK(!w.running());
+    w.start();  // an explicit start resumes it
     w.post([&] { ++n; });
     CHECK(waitFor([&] { return n.load() == 2; }));
 }
