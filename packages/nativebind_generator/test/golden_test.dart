@@ -44,6 +44,10 @@ void main() {
     expectFresh(GeneratorOptions(inputs: ['$fixtures/hvac'], dartOut: '$generatorRoot/../nativebind/test/generated/hvac'));
   });
 
+  test('names fixture Dart', () {
+    expectFresh(GeneratorOptions(inputs: ['$fixtures/names'], dartOut: '$generatorRoot/../nativebind/test/generated/names'));
+  });
+
   test('showcase example Dart', () {
     final app = '$generatorRoot/../../examples/showcase';
     expectFresh(GeneratorOptions(inputs: ['$app/native'], dartOut: '$app/lib/nativebind'));

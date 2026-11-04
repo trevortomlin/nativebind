@@ -77,9 +77,27 @@ public:
 | types from a header with `NATIVEBIND_DART_LIBRARY("package:x/x.dart")` | imported from that library (not generated again) |
 
 Names follow Dart conventions: `play_time` → `playTime`, `FAST_FORWARD` and
-`kFastForward` → `fastForward`. Reserved words get a trailing `_`. Enum labels
-come from `///< @label Text` on the enumerator, or are derived from its name
+`kFastForward` → `fastForward`. Reserved words get a trailing `_`, and so do
+members that would clash with what every Dart object or module proxy already
+has (`hashCode`, `runtimeType`, `toString`, `noSuchMethod`, `isAlive`): a
+property named `isAlive` is `isAlive_` in Dart. Enum labels come from
+`///< @label Text` on the enumerator, or are derived from its name
 (`FastForward` → "Fast forward").
+
+Dart has no namespaces, so every generated enum and struct needs a distinct
+Dart name. Give one another name with `@dart` in its doc comment, for example
+to avoid a Flutter type such as `Color` in app code that imports both:
+
+```cpp
+/// A color as the LED driver takes it.
+/// @dart LedColor
+struct Color { uint8_t r, g, b; };
+```
+
+A type whose Dart name would be one of the `dart:core` types the generated
+code uses (`bool`, `int`, `double`, `num`, `String`, `List`, `DateTime`,
+`Duration`, `Object`, `Future`, `Null`, `Never`) is an error, since it would
+hide that type; rename it with `@dart`.
 
 ## Safety nets
 

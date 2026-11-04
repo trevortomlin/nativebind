@@ -10,6 +10,9 @@ break the API).
 
 ### Added
 
+- `/// @dart Name` in an enum's or struct's doc comment gives it another
+  name in Dart (for example to keep a C++ `Color` from clashing with
+  Flutter's in app code).
 - `Worker(Module& owner, name)`: the runtime stops the worker after the
   owner's `onStop` and before the module is deleted, wherever the member is
   declared, and a late `post` no longer restarts it.
@@ -49,6 +52,12 @@ break the API).
 
 ### Fixed
 
+- A module member named `isAlive` is `isAlive_` in Dart, like members named
+  after `Object`'s; it overrode `ModuleProxy.isAlive` and did not compile.
+- A C++ enum, struct or module whose Dart name would be a `dart:core` type
+  the generated code uses (`Duration`, `String`, `List`, ...) is a generator
+  error pointing to `@dart`. Before, it hid that type and the generated Dart
+  did not compile wherever the type met a chrono value, a list or a method.
 - Disconnecting a connection made with `connect(Module&, fn)` also forgets
   its cleanup on that module. Before, each one stayed registered until the
   module was destroyed, so a module connecting repeatedly grew without bound.

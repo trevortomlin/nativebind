@@ -39,6 +39,7 @@ void main() {
   }
 
   test('hvac fixture glue compiles', () => compiles(['$fixtures/hvac']), skip: cxx == null ? 'no C++ compiler' : null);
+  test('names fixture glue compiles', () => compiles(['$fixtures/names']), skip: cxx == null ? 'no C++ compiler' : null);
 
   test('a struct field the generator missed fails to compile', () {
     // Simulate a parser miss: hide one field behind a macro the generator
