@@ -706,6 +706,7 @@ int32_t Runtime::write(uint32_t instance, uint16_t prop, const uint8_t* data, si
         setLastError("nativebind is not started");
         return NATIVEBIND_E_NOT_STARTED;
     }
+    const bool guarded = hasGuard();
     std::shared_lock reg(registry_);
     Module* m = findLocked(instance);
     if (!m || !m->live()) {
@@ -716,37 +717,52 @@ int32_t Runtime::write(uint32_t instance, uint16_t prop, const uint8_t* data, si
         setLastError(std::string(m->type_->name) + " has no property #" + std::to_string(prop));
         return NATIVEBIND_E_NO_MEMBER;
     }
-    PropBase& p = *m->props_[prop];
-    if (!p.writable()) {
-        setLastError(std::string(m->type_->name) + "." + p.name() + " is read-only");
-        return NATIVEBIND_E_READ_ONLY;
-    }
-    // The metadata (label, attributes) is copied only for a guard to read: on
-    // the UI thread, that copy was most of the cost of a write.
-    const bool guarded = hasGuard();
-    Meta meta;
-    bool enabled;
+    const char* const typeName = m->type_->name;  // static strings: valid without the lock
+    const char* const propName = m->props_[prop]->name();
     {
-        std::lock_guard g(p.mutex_);
-        if (guarded) meta = p.meta_;
-        enabled = p.enabled_;
-    }
-    if (!enabled) {
-        setLastError(std::string(m->type_->name) + "." + p.name() + " is disabled");
-        return NATIVEBIND_E_DISABLED;
-    }
-    if (guarded) {
-        const std::string denied = checkGuard({GuardRequest::Kind::Write, m->type_->name, p.name(), &meta, 0});
-        if (!denied.empty()) {
-            setLastError(std::string(m->type_->name) + "." + p.name() + ": " + denied);
-            return NATIVEBIND_E_ACCESS;
+        PropBase& p = *m->props_[prop];
+        if (!p.writable()) {
+            setLastError(std::string(typeName) + "." + propName + " is read-only");
+            return NATIVEBIND_E_READ_ONLY;
+        }
+        // The metadata is copied only for a guard to read: on the UI thread,
+        // that copy was most of the cost of a write.
+        Meta meta;
+        bool enabled;
+        {
+            std::lock_guard g(p.mutex_);
+            if (guarded) meta = p.meta_;
+            enabled = p.enabled_;
+        }
+        if (!enabled) {
+            setLastError(std::string(typeName) + "." + propName + " is disabled");
+            return NATIVEBIND_E_DISABLED;
+        }
+        if (guarded) {
+            // Without the registry lock, so the guard may call nativebind (read
+            // another module's property, say) without locking it again here.
+            reg.unlock();
+            const std::string denied = checkGuard({GuardRequest::Kind::Write, typeName, propName, &meta, 0});
+            if (!denied.empty()) {
+                setLastError(std::string(typeName) + "." + propName + ": " + denied);
+                return NATIVEBIND_E_ACCESS;
+            }
+            // Handles are not reused (a 32-bit counter): an instance found
+            // again is the one checked above. Range and enabled are checked
+            // again when the write runs on the nativebind thread.
+            reg.lock();
+            m = findLocked(instance);
+            if (!m || !m->live()) {
+                setLastError("no instance " + std::to_string(instance) + " (destroyed while the guard ran)");
+                return NATIVEBIND_E_NO_INSTANCE;
+            }
         }
     }
     try {
         Reader r(data, len);
-        p.uiWrite(r, seq);
+        m->props_[prop]->uiWrite(r, seq);
     } catch (const DecodeError& e) {
-        setLastError(std::string(m->type_->name) + "." + p.name() + ": " + e.what());
+        setLastError(std::string(typeName) + "." + propName + ": " + e.what());
         return NATIVEBIND_E_TYPE;
     }
     touch();

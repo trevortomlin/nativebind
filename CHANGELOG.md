@@ -52,6 +52,11 @@ break the API).
 
 ### Fixed
 
+- A write guard runs without the runtime's registry lock, so it may call
+  nativebind (read another module's property, spawn an instance). Before, a
+  guard that locked the registry again deadlocked the UI write, and the docs
+  forbade calling nativebind from it. A write whose instance is destroyed
+  while its guard runs returns `NATIVEBIND_E_NO_INSTANCE`.
 - A module member named `isAlive` is `isAlive_` in Dart, like members named
   after `Object`'s; it overrode `ModuleProxy.isAlive` and did not compile.
 - A C++ enum, struct or module whose Dart name would be a `dart:core` type

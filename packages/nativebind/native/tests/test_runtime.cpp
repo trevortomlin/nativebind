@@ -1,3 +1,6 @@
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <future>
 #include <string>
 #include <thread>
@@ -235,6 +238,78 @@ TEST(ui_write_errors) {
     CHECK_EQ(write(th, kSetpoint, feed::encode(22.0), 1), NATIVEBIND_E_DISABLED);
     th.setpoint.setEnabled(true);
     CHECK_EQ(write(th, kSetpoint, feed::encode(22.0), 1), NATIVEBIND_OK);
+}
+
+namespace {
+
+/// Runs a UI write on its own thread and fails the whole run, rather than
+/// hanging it, if the write deadlocks.
+int32_t writeOrDie(const Module& m, uint16_t prop, const std::vector<uint8_t>& v, uint32_t seq) {
+    std::promise<int32_t> done;
+    auto status = done.get_future();
+    std::thread([&, p = std::move(done)]() mutable {
+        p.set_value(nativebind_write(m.handle(), prop, v.data(), static_cast<uint32_t>(v.size()), seq));
+    }).detach();
+    if (status.wait_for(std::chrono::seconds(3)) != std::future_status::ready) {
+        std::fputs("FATAL: a UI write deadlocked in its guard\n", stderr);
+        std::_Exit(1);
+    }
+    return status.get();
+}
+
+}  // namespace
+
+TEST(a_write_guard_may_call_nativebind) {
+    feed::Started s;
+    feed::Consumer c;
+    auto& th = singleton<Thermo>();
+    // Reading another module's state is what a guard naturally does...
+    setGuard([](const GuardRequest&) -> std::string {
+        return nativebind::property<double>("Thermo", "roomTemp").get() > 100 ? "too hot" : "";
+    });
+    CHECK_EQ(writeOrDie(th, kSetpoint, feed::encode(22.0), 1), NATIVEBIND_OK);
+    // ...and even a call that locks the runtime exclusively must not deadlock.
+    setGuard([](const GuardRequest& r) -> std::string {
+        if (std::string(r.member) == "setpoint") spawn<Zone>(77, "audit");
+        return "";
+    });
+    CHECK_EQ(writeOrDie(th, kSetpoint, feed::encode(23.0), 2), NATIVEBIND_OK);
+    CHECK_EQ(instances<Zone>().size(), size_t{1});
+    setGuard(nullptr);
+    c.settle();
+    CHECK_EQ(th.setpoint.get(), 23.0);
+}
+
+TEST(an_invoke_guard_may_call_nativebind) {
+    feed::Started s;
+    feed::Consumer c;
+    c.pump();
+    auto& th = singleton<Thermo>();
+    setGuard([](const GuardRequest& r) -> std::string {
+        if (r.kind != GuardRequest::Kind::Invoke) return "";
+        spawn<Zone>(79, "audit");  // locks the registry exclusively
+        return nativebind::property<double>("Thermo", "roomTemp").get() > 100 ? "too hot" : "";
+    });
+    // Guarded methods run on the nativebind thread: flush() bounds a deadlock.
+    CHECK_EQ(invoke(th, mCalibrate, feed::encode(0.5), 1), NATIVEBIND_OK);
+    CHECK(flush());
+    c.settle();
+    CHECK_EQ(resultFor(c, 1)->status, NATIVEBIND_OK);
+    CHECK_EQ(instances<Zone>().size(), size_t{1});
+    setGuard(nullptr);
+}
+
+TEST(a_write_whose_instance_goes_while_its_guard_runs_fails_cleanly) {
+    feed::Started s;
+    Zone& z = spawn<Zone>(78, "doomed");
+    setGuard([&z](const GuardRequest&) -> std::string {
+        destroy(z);
+        flush();  // the instance is gone before the guard returns
+        return "";
+    });
+    CHECK_EQ(writeOrDie(z, 0, feed::encode(std::string("x")), 1), NATIVEBIND_E_NO_INSTANCE);
+    setGuard(nullptr);
+    CHECK(instances<Zone>().empty());
 }
 
 TEST(write_requires_started_runtime) {

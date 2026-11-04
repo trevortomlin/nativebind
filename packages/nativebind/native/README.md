@@ -172,8 +172,9 @@ nativebind::setGuard([](const nativebind::GuardRequest& r) -> std::string {
 });
 ```
 
-It runs on the calling thread before every UI write and `NATIVEBIND_INVOKE_AS` call;
-keep it fast and read-only. Without one, `INVOKE_AS` calls are refused.
+It runs before every UI write (on the Flutter UI thread) and `NATIVEBIND_INVOKE_AS`
+call (on the nativebind thread), with no runtime lock held: it may read other
+modules' state, but keep it fast. Without one, `INVOKE_AS` calls are refused.
 
 ### Testing modules
 
