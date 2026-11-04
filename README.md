@@ -421,10 +421,17 @@ NATIVEBIND_SIGNAL(finished)                     // no arguments
 trackChanged("Intro");                          // from any thread
 auto id = trackChanged.connect([](const std::string& t) { log(t); });   // C++ listeners too
 trackChanged.disconnect(id);
+player.trackChanged.connect(*this, [this](const std::string& t) { show(t); });  // ends with *this
 ```
 
 Signals are for events without a current value ("track ended", "login
 failed"). For state, use a property.
+
+C++ listeners run on the emitting thread. When a listener uses another
+module, pass that module to `connect`: the connection then ends when the
+module is destroyed (after its `onStop`), whichever of the two goes first.
+`disconnect` returns only once the listener is no longer running on another
+thread, so a listener must not wait for the thread that disconnects it.
 
 ### Methods
 

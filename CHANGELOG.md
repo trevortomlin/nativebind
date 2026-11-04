@@ -8,6 +8,12 @@ break the API).
 
 ## Unreleased
 
+### Added
+
+- `Signal::connect(Module& listener, fn)`: the connection ends when
+  `listener` is destroyed (after its `onStop`), so a listener capturing
+  another module's `this` is never called after that module is gone.
+
 ### Changed
 
 - `nativebind::Meta::label` is a `std::string` (empty = derived from the
@@ -17,6 +23,9 @@ break the API).
 
 ### Fixed
 
+- `Signal::disconnect` waits until the listener is no longer running on
+  another thread, so what it captured can be destroyed right after. A
+  listener may still disconnect itself.
 - After a hot restart, property writes are numbered past the
   acknowledgments C++ still holds from the previous isolate. Before, a new
   write could count as acknowledged by an old ack: a C++-side change

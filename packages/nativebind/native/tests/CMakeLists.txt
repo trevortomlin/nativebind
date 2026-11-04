@@ -11,7 +11,8 @@ add_executable(nativebind_tests
   test_worker.cpp
   test_refs.cpp
   test_fuzz.cpp
-  test_edge.cpp)
+  test_edge.cpp
+  test_signals.cpp)
 
 # thermo.cpp is compiled through its generated wrapper only.
 set_source_files_properties(modules/thermo.cpp modules/device.cpp PROPERTIES HEADER_FILE_ONLY ON)

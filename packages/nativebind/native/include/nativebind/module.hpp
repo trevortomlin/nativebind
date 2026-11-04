@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <vector>
 
 #include "nativebind/detail/core.hpp"
@@ -84,6 +85,10 @@ private:
     friend class ListBase;
     friend class SignalBase;
 
+    /// Ends the signal connections this module owns (Signal::connect(owner, fn)).
+    /// Called by the runtime after onStop, before the module is deleted.
+    void endConnections();
+
     std::vector<PropBase*> props_;
     std::vector<ListBase*> lists_;
     std::vector<SignalBase*> signals_;
@@ -92,6 +97,8 @@ private:
     uint16_t typeId_ = 0;
     const glue::ModuleType* type_ = nullptr;
     std::atomic<bool> live_{false};
+    std::mutex connectionsMutex_;
+    std::vector<std::function<void()>> connections_;  // disconnects of owned connections
 };
 
 }  // namespace nativebind

@@ -89,7 +89,8 @@ public:
         const int32_t key = ++nextKey_;
         Download& d = nativebind::spawn<Download>(key, std::move(name), bytes);
         // finished is emitted on the download's worker thread: hop over to ours.
-        d.finished.connect([this] { post([this] { recount(); }); });
+        // Owned by *this, so the connection ends if Downloads goes first.
+        d.finished.connect(*this, [this] { post([this] { recount(); }); });
         active = active + 1;
         return key;
     }

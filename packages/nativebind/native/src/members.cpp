@@ -1,6 +1,8 @@
 // Non-template parts of Module and the bound member classes.
 
+#include <algorithm>
 #include <variant>
+
 #include "nativebind/list.hpp"
 #include "nativebind/module.hpp"
 #include "nativebind/property.hpp"
@@ -12,7 +14,10 @@ namespace nativebind {
 
 Module::Module() : handle_(detail::newHandle()) {}
 
-Module::~Module() { detail::moduleGone(handle_); }
+Module::~Module() {
+    endConnections();  // modules the runtime never adopted (it ends them in destroyNow)
+    detail::moduleGone(handle_);
+}
 
 TimerId Module::every(std::chrono::milliseconds period, std::function<void()> fn) {
     if (period.count() <= 0) throw std::invalid_argument("nativebind::Module::every: period must be positive");
@@ -143,5 +148,50 @@ SignalBase::SignalBase(Module* owner, const char* name)
     : owner_(owner), name_(name), index_(static_cast<uint16_t>(owner->signals_.size())) {
     owner->signals_.push_back(this);
 }
+
+void SignalBase::endWith(Module& listener, std::function<void()> disconnect) {
+    std::lock_guard g(listener.connectionsMutex_);
+    listener.connections_.push_back(std::move(disconnect));
+}
+
+void Module::endConnections() {
+    std::vector<std::function<void()>> ends;
+    {
+        std::lock_guard g(connectionsMutex_);
+        ends.swap(connections_);
+    }
+    for (auto& end : ends) end();
+}
+
+namespace detail {
+namespace {
+// Listeners whose calls are running on this thread (innermost last).
+thread_local std::vector<const ListenerSlot*> runningHere;
+}  // namespace
+
+ListenerCall::ListenerCall(ListenerSlot& s) : slot_(s) {
+    std::lock_guard g(s.m);
+    entered_ = s.connected;
+    if (entered_) {
+        ++s.running;
+        runningHere.push_back(&s);
+    }
+}
+
+ListenerCall::~ListenerCall() {
+    if (!entered_) return;
+    runningHere.pop_back();
+    std::lock_guard g(slot_.m);
+    --slot_.running;
+    slot_.idle.notify_all();
+}
+
+void retireListener(ListenerSlot& s) {
+    const auto mine = std::count(runningHere.begin(), runningHere.end(), &s);
+    std::unique_lock l(s.m);
+    s.connected = false;
+    s.idle.wait(l, [&] { return s.running == mine; });
+}
+}  // namespace detail
 
 }  // namespace nativebind
