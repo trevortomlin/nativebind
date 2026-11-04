@@ -6,6 +6,31 @@ share a version number. The format follows
 [Semantic Versioning](https://semver.org/) (with 0.x minor versions allowed to
 break the API).
 
+## Unreleased
+
+### Fixed
+
+- A record the Dart side cannot decode (for example an enum value the Dart
+  enum does not have) is reported and skipped; the rest of its batch still
+  applies, call results in it still complete, and the property, list or
+  instance it targeted keeps its last good state. Gap-triggered resyncs are
+  capped like failed drains.
+- A `validate` handler that throws now rejects the write and acknowledges it
+  (the error is logged); before, `write()` never completed.
+- Converting a Dart `DateTime` or `Duration` that does not fit the C++
+  `std::chrono` type throws a `DecodeError` (the call fails with `E_TYPE`)
+  instead of overflowing. Encoding coarse C++ values beyond the microsecond
+  range saturates.
+- An open `nativebind::Batch` no longer blocks the Flutter UI thread: the
+  drain returns nothing and the last batch to close wakes the consumer.
+- `List::erase(i, count)` rejects a `count` that overflows instead of
+  corrupting the list; `erase(i, 0)` with `i` past the end throws like the
+  other bounds checks.
+- The generator rejects enumerators outside the int32 range when the enum
+  crosses the binding (they were silently truncated on the wire).
+- Error messages name the real commands (`dart run nativebind_generator`,
+  `nativebind_add_modules`).
+
 ## 0.1.0 - 2026-11-02
 
 First public release.
