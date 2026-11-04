@@ -65,8 +65,12 @@ class BoundList<T> extends ChangeNotifier with ListBase<T> implements ValueListe
   /// False once the module instance was destroyed in C++.
   bool get isAlive => $slot.instance.alive;
 
+  List<T>? _snapshot;
+
+  /// The items as they are now, unmodifiable. Later changes do not show in a
+  /// value already read, so it can be kept and compared.
   @override
-  List<T> get value => UnmodifiableListView(_items);
+  List<T> get value => _snapshot ??= List<T>.unmodifiable(_items);
 
   @override
   int get length => _items.length;
@@ -116,6 +120,7 @@ class BoundList<T> extends ChangeNotifier with ListBase<T> implements ValueListe
   }
 
   void _emit(ListChange<T> c) {
+    _snapshot = null; // every change goes through here
     if (_changes.hasListener) _changes.add(c);
   }
 

@@ -149,6 +149,27 @@ void main() {
     expect(f.invokes, isEmpty); // nothing reached C++
   });
 
+  test('a list or instances value is a snapshot that later changes leave alone', () async {
+    final f = await boot();
+    final list = Thermo.instance.readings;
+    push(f, (feed) => feed.listInsert(thermo, 0, 2, 0, reading('a', 0)));
+    final before = list.value;
+    push(f, (feed) {
+      feed
+        ..listInsert(thermo, 0, 3, 1, reading('b', 0))
+        ..listUpdate(thermo, 0, 4, 0, reading('a2', 0));
+    });
+    expect(before.map((r) => r.sensor), ['a']); // what the list was when read
+    expect(list.value.map((r) => r.sensor), ['a2', 'b']);
+    expect(identical(list.value, list.value), isTrue); // no copy per read
+
+    push(f, (feed) => feed.added(30, f.idOf('Zone'), key: 1));
+    final zones = Zone.instances.value;
+    push(f, (feed) => feed.added(31, f.idOf('Zone'), key: 2));
+    expect(zones.map((z) => z.key), [1]);
+    expect(Zone.instances.value.map((z) => z.key), [1, 2]);
+  });
+
   test('an instance re-added with a new handle gets a fresh proxy', () async {
     final f = await boot();
     push(f, (feed) => feed..added(10, f.idOf('Zone'), key: 4));

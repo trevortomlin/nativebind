@@ -19,6 +19,10 @@ break the API).
 
 ### Changed
 
+- `BoundList.value` and `BoundInstances.value` are unmodifiable snapshots
+  (cached until the next change) instead of live views, so a value kept to
+  compare later still holds what it held when read. Indexing the list itself
+  still reads the current items.
 - The generated glue checks the full type the generator read for every
   property, list item, struct field, signal argument, method parameter and
   return type, nested types included, against the compiler's. Before, only
