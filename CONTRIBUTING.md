@@ -30,8 +30,9 @@ git clone https://github.com/trevortomlin/nativebind && cd nativebind
 (cd examples/showcase && flutter analyze && flutter test)
 ```
 
-Analyzers must report "No issues found", and the C++ builds treat warnings as
-errors. Performance checks: `flutter test --tags perf` and
+The C++ test binaries also run through `ctest` (exit checks, and a CMake
+integration test labelled `integration` that needs `dart`). Analyzers must
+report "No issues found", and the C++ builds treat warnings as errors. Performance checks: `flutter test --tags perf` and
 `./build/release/tests/nativebind_bench --check` from a Release build of
 `packages/nativebind/native`.
 
@@ -39,22 +40,15 @@ errors. Performance checks: `flutter test --tags perf` and
 
 **Generated files are never edited by hand.** `*.nb.cpp`, `*.nb.hpp` and
 `*.nb.dart` come from the generator. After changing the generator, the macros,
-`glue.hpp` or a test module, regenerate every checked-in output:
+`glue.hpp` or a test module, regenerate every checked-in output and review the
+diff:
 
 ```sh
-gen() { dart run packages/nativebind_generator/bin/nativebind_generator.dart -q "$@"; }
-N=packages/nativebind/native
-gen --no-dart --cpp-out $N/tests/modules $N/tests/modules/thermo.cpp
-gen --no-dart --cpp-out $N/tests/modules $N/tests/modules/device.cpp
-gen --dart-out packages/nativebind/test/generated/thermo $N/tests/modules/thermo.cpp
-gen --dart-out packages/nativebind/test/generated/device $N/tests/modules/device.cpp
-gen --dart-out packages/nativebind/test/generated/hvac packages/nativebind_generator/test/fixtures/hvac
-(cd examples/showcase && dart run nativebind_generator)
+tool/regen.sh
 ```
 
-`packages/nativebind_generator/test/golden_test.dart` fails if a checked-in
-output is stale (`NATIVEBIND_UPDATE_GOLDENS=1 dart test test/golden_test.dart`
-rewrites them; review the diff).
+`packages/nativebind_generator/test/golden_test.dart` lists those outputs and
+fails CI when one is stale; add new fixtures there.
 
 **The wire format and C ABI are a contract.** A change touches all of these
 together: `native/include/nativebind/codec.hpp`, `native/src/runtime.cpp` and
@@ -66,8 +60,9 @@ when the change is incompatible.
 
 **Don't break the threading model.** Module logic runs on one nativebind
 thread. Props, lists and signals are thread-safe. `Worker` handles blocking
-I/O and `Batch` makes multi-value updates atomic for the UI. The guard runs on
-the UI's calling thread under runtime locks and may only read state. Dart is
+I/O and `Batch` makes multi-value updates atomic for the UI. The guard runs
+without runtime locks (on the UI's calling thread for writes, the nativebind
+thread for guarded invokes), so it may call nativebind. Dart is
 single-isolate and applies a whole drained batch before notifying listeners.
 `packages/nativebind/native/src/runtime.cpp` documents the lock order.
 
@@ -82,7 +77,7 @@ one domain belong in a library built on top.
   `packages/nativebind/native/tests`, Dart tests in `packages/nativebind/test`,
   generator tests in `packages/nativebind_generator/test` (every user-facing
   error message is covered in `errors_test.dart`).
-- Update the README and `CHANGELOG.md` when behavior or API changes.
+- Update [the guide](docs/guide.md) and `CHANGELOG.md` when behavior or API changes.
 - Make sure CI is green.
 
 By contributing you agree that your contributions are licensed under the MIT
