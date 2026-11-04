@@ -37,6 +37,8 @@ break the API).
 
 ### Fixed
 
+- `BoundList.changes` ends when the module instance is destroyed or
+  nativebind stops, like signal streams; before, it stayed open.
 - Instances with keys at or above 2^63 are ordered like C++ (unsigned) in
   `instances`; they came first because Dart read the key as signed.
 - After a hot restart, a call the previous isolate made that finishes later

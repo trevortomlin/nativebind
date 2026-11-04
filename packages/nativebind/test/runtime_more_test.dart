@@ -130,6 +130,17 @@ void main() {
     expect(Zone.byKey(high), isNotNull);
   });
 
+  test('list change streams end when the instance goes, like signal streams', () async {
+    await boot();
+    var listDone = false, signalDone = false;
+    Thermo.instance.readings.changes.listen(null, onDone: () => listDone = true);
+    Thermo.instance.overTemp.listen(null, onDone: () => signalDone = true);
+    await NativeBind.stop();
+    await pumpEventQueue();
+    expect(signalDone, isTrue);
+    expect(listDone, isTrue);
+  });
+
   test('an instance re-added with a new handle gets a fresh proxy', () async {
     final f = await boot();
     push(f, (feed) => feed..added(10, f.idOf('Zone'), key: 4));

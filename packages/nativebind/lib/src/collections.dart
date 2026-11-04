@@ -58,7 +58,8 @@ class BoundList<T> extends ChangeNotifier with ListBase<T> implements ValueListe
   List<T> _items = [];
   final _changes = StreamController<ListChange<T>>.broadcast();
 
-  /// Insert/remove/update/move/reset operations as they arrive.
+  /// Insert/remove/update/move/reset operations as they arrive. Ends when the
+  /// module instance is destroyed (or nativebind stops).
   Stream<ListChange<T>> get changes => _changes.stream;
 
   /// False once the module instance was destroyed in C++.
@@ -119,6 +120,7 @@ class BoundList<T> extends ChangeNotifier with ListBase<T> implements ValueListe
   }
 
   void $notify() => notifyListeners();
+  void $close() => _changes.close();
 
   @override
   void dispose() {

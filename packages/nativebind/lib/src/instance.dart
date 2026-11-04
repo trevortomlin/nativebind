@@ -41,6 +41,7 @@ final class Instance {
     }
     for (final l in _lists.values) {
       final b = l.bound;
+      if (b is BoundList) b.$close();
       if (b != null) runtime.markDirty(b);
     }
     for (final s in _signals.values) {
