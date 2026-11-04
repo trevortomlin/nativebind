@@ -58,7 +58,9 @@ public:
     Generator(GeneratorOptions(inputs: ['${dir.path}/m.cpp'], cppOut: dir.path)).run();
     final r = Process.runSync(cxx!, ['-std=c++20', '-fsyntax-only', '-I', '$nativeRoot/include', '${dir.path}/m.nb.cpp']);
     expect(r.exitCode, isNot(0));
-    expect(r.stderr, contains('structured binding'));
+    // GCC: "only 1 name provided for structured binding"; Clang: "binds to 2
+    // elements, but only 1 name was provided".
+    expect(r.stderr, matches(RegExp(r'structured binding|binds to \d+ elements')));
   }, skip: cxx == null ? 'no C++ compiler' : null);
 
   test('a type the generator misread fails to compile, wherever it is used', () {
