@@ -9,13 +9,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  nativebind: ^0.1.0
+  nativebind: ^0.2.0
 
 dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
-  nativebind_generator: ^0.1.0
+  nativebind_generator: ^0.2.0
 
 flutter:
   uses-material-design: true

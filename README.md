@@ -142,26 +142,15 @@ more modules, is [`examples/showcase`](examples/showcase).
 flutter create --platforms linux my_app && cd my_app
 ```
 
-nativebind is not on pub.dev yet, so depend on this repository through git:
-
-```yaml
-# pubspec.yaml
-dependencies:
-  nativebind:
-    git:
-      url: https://github.com/trevortomlin/nativebind
-      path: packages/nativebind
-
-dev_dependencies:
-  nativebind_generator:
-    git:
-      url: https://github.com/trevortomlin/nativebind
-      path: packages/nativebind_generator
-```
+Add the runtime, and the generator as a development dependency:
 
 ```sh
-flutter pub get
+flutter pub add nativebind dev:nativebind_generator
 ```
+
+To follow unreleased changes instead, depend on this repository through git
+(`git: {url: https://github.com/trevortomlin/nativebind, path: packages/nativebind}`,
+and the same with `path: packages/nativebind_generator`).
 
 ### 2. Write a module
 

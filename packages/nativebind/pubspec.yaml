@@ -2,7 +2,7 @@ name: nativebind
 description: >-
   QML-style MVVM bindings between Flutter and C++ over FFI. Write a C++ module
   once; get typed, reactive Dart view models without hand-written FFI code.
-version: 0.1.0
+version: 0.2.0
 repository: https://github.com/trevortomlin/nativebind
 issue_tracker: https://github.com/trevortomlin/nativebind/issues
 topics: [ffi, mvvm, cpp, codegen, embedded]

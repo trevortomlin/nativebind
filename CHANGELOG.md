@@ -6,7 +6,7 @@ share a version number. The format follows
 [Semantic Versioning](https://semver.org/) (with 0.x minor versions allowed to
 break the API).
 
-## Unreleased
+## 0.2.0 - 2026-11-03
 
 ### Added
 

@@ -40,15 +40,10 @@ await player.seek(42);                            // methods return Futures
 
 ## Setup
 
-1. Add the packages (from git until they are on pub.dev):
+1. Add the packages:
 
-   ```yaml
-   dependencies:
-     nativebind:
-       git: {url: https://github.com/trevortomlin/nativebind, path: packages/nativebind}
-   dev_dependencies:
-     nativebind_generator:
-       git: {url: https://github.com/trevortomlin/nativebind, path: packages/nativebind_generator}
+   ```sh
+   flutter pub add nativebind dev:nativebind_generator
    ```
 
 2. Build your modules into a shared library with CMake. `nativebind_add_modules`
