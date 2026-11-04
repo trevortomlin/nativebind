@@ -175,7 +175,17 @@ int main(int argc, char** argv) {
                    std::shuffle(items.begin(), items.end(), rng);
                    list.sync(items, [](const Reading& r) { return r.sensor; });
                }),
-               "us", 20000);
+               "us", 3000);
+        std::vector<Reading> rows;
+        for (int i = 0; i < 5000; ++i) rows.push_back({"sensor-" + std::to_string(i), static_cast<double>(i), {}});
+        list.assign(rows);
+        nativebind_drain(&len);
+        report("List::sync 5000 shuffled", measure(5, [&] {
+                   std::shuffle(rows.begin(), rows.end(), rng);
+                   list.sync(rows, [](const Reading& r) { return r.sensor; });
+                   nativebind_drain(&len);
+               }, 3),
+               "us", 35000);
         list.clear();
         nativebind_drain(&len);
     }
@@ -195,6 +205,53 @@ int main(int argc, char** argv) {
                    (void)rd.value<Reading>();
                }),
                "ns", 700);
+        const std::vector<Reading> many(1000, r);
+        report("encode list of 1000 structs", measure(2000, [&] {
+                   buf.clear();
+                   Writer w(buf);
+                   w.value(many);
+               }),
+               "us", 400);
+        constexpr int threads = 4, per = 200000;
+        std::vector<double> ns;
+        for (int round = 0; round < 5; ++round) {
+            std::atomic<bool> go{false};
+            std::vector<std::thread> ts;
+            for (int t = 0; t < threads; ++t)
+                ts.emplace_back([&] {
+                    std::vector<uint8_t> local;
+                    while (!go) std::this_thread::yield();
+                    for (int i = 0; i < per; ++i) {
+                        local.clear();
+                        Writer w(local);
+                        w.value(r);
+                    }
+                });
+            const auto t0 = Clock::now();
+            go = true;
+            for (auto& t : ts) t.join();
+            ns.push_back(std::chrono::duration<double, std::nano>(Clock::now() - t0).count() / per);
+        }
+        std::sort(ns.begin(), ns.end());
+        report("encode struct, 4 threads at once (per encode)", ns[2], "ns", 500);
+    }
+
+    // ---- the UI thread's share of a write: the nativebind_write call itself
+    {
+        Meta m = th.setpoint.meta();
+        m.label = "Living room setpoint";
+        m.attrs = {{"unit", "degrees Celsius"}, {"decimals", 1}, {"confirm", false}, {"hint", "Comfort temperature"}};
+        th.setpoint.setMeta(m);
+        nativebind_flush(5000);
+        nativebind_drain(&len);
+        const auto v = feed::encode(21.0);
+        uint32_t seq = 0;
+        report("nativebind_write call (4 attributes, no guard)", measure(20000, [&] {
+                   nativebind_write(th.handle(), 0, v.data(), static_cast<uint32_t>(v.size()), ++seq);
+               }),
+               "ns", 3000);
+        nativebind_flush(5000);
+        nativebind_drain(&len);
     }
 
     // ---- round trips through the C ABI (what a touch costs end to end, minus Flutter)

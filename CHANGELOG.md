@@ -19,6 +19,14 @@ break the API).
 
 ### Changed
 
+- `List::sync` takes O(n log n) time when the key has a `std::hash`, and no
+  longer shifts rows in memory for each move: 5,000 shuffled rows take ~3 ms
+  instead of ~250 ms, during which the list was locked. It emits the same
+  operations as before. Keys with only `==` keep the O(n × m) algorithm.
+- Struct values are encoded and decoded about twice as fast, and threads
+  encoding structs at once no longer serialize on a global lock (4 threads:
+  ~650 ns per encode before, ~50 ns now): each struct type looks its codec
+  up once.
 - `BoundList.value` and `BoundInstances.value` are unmodifiable snapshots
   (cached until the next change) instead of live views, so a value kept to
   compare later still holds what it held when read. Indexing the list itself
