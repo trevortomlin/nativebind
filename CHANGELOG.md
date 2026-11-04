@@ -19,6 +19,12 @@ break the API).
 
 ### Changed
 
+- The generated glue checks the full type the generator read for every
+  property, list item, struct field, signal argument, method parameter and
+  return type, nested types included, against the compiler's. Before, only
+  the top-level wire tag of properties, list items and fields was checked,
+  so a misread `std::vector<T>`, `std::optional<T>`, struct or enum, or any
+  misread method or signal type, compiled and failed only at run time.
 - `nativebind_add_modules` passes the target's include directories
   (`target_include_directories`) to the generator, so headers found there
   need no `INCLUDE_DIRS`, and gives a shared library hidden symbol

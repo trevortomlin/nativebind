@@ -19,16 +19,20 @@ struct nativebind::glue::Invoker<::Device> {
         {"written", ::nativebind::tagOf<decltype(Self::written)::value_type>()},
     };
 
-    static_assert(::nativebind::tagOf<decltype(Self::a)::value_type>() == ::nativebind::Tag::Int,
+    static_assert(::nativebind::glue::hasShape<decltype(Self::a)::value_type, ::nativebind::glue::shape::Int>,
                   "nativebind_generator read Device::a as int; please report this");
-    static_assert(::nativebind::tagOf<decltype(Self::b)::value_type>() == ::nativebind::Tag::Int,
+    static_assert(::nativebind::glue::hasShape<decltype(Self::b)::value_type, ::nativebind::glue::shape::Int>,
                   "nativebind_generator read Device::b as int; please report this");
-    static_assert(::nativebind::tagOf<decltype(Self::polls)::value_type>() == ::nativebind::Tag::Int,
+    static_assert(::nativebind::glue::hasShape<decltype(Self::polls)::value_type, ::nativebind::glue::shape::Int>,
                   "nativebind_generator read Device::polls as int; please report this");
-    static_assert(::nativebind::tagOf<decltype(Self::setpoint)::value_type>() == ::nativebind::Tag::Double,
+    static_assert(::nativebind::glue::hasShape<decltype(Self::setpoint)::value_type, ::nativebind::glue::shape::Double>,
                   "nativebind_generator read Device::setpoint as double; please report this");
-    static_assert(::nativebind::tagOf<decltype(Self::written)::value_type>() == ::nativebind::Tag::Double,
+    static_assert(::nativebind::glue::hasShape<decltype(Self::written)::value_type, ::nativebind::glue::shape::Double>,
                   "nativebind_generator read Device::written as double; please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::startPolling, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<>>>,
+                  "nativebind_generator read Device::startPolling as void(); please report this");
+    static_assert(::nativebind::glue::methodHasShape<&Self::stopPolling, ::nativebind::glue::shape::Fn<::nativebind::glue::shape::Void, ::nativebind::glue::shape::Args<>>>,
+                  "nativebind_generator read Device::stopPolling as void(); please report this");
 
     static void invoke(::nativebind::Module& m, uint16_t method, ::nativebind::Reader& args, ::nativebind::Writer& result) {
         auto& self = static_cast<Self&>(m);
