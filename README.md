@@ -417,8 +417,9 @@ Each operation reaches Flutter as one incremental change. Prefer `sync` over
 `assign` when refreshing from a data source: rows keep their identity, so
 animations and scroll positions survive. Lists are read-only in Dart; change
 them through `NATIVEBIND_INVOKE` methods, which keeps the model in C++.
-`sync` compares keys in O(n × m) time: fine for hundreds of rows, but for many
-thousands prefer `assign` or targeted edits.
+`sync` takes O(n log n) time when the key has a `std::hash` (strings,
+integers), so even 5,000 shuffled rows take a few milliseconds. A key type
+with only `==` falls back to O(n × m).
 
 ### Signals
 

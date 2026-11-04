@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <cstdint>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -140,6 +142,109 @@ TEST(list_sync_keeps_identity_with_minimal_operations) {
     c.pump();
     CHECK((names(th) == std::vector<std::string>{"5", "4", "3", "2", "1"}));
     checkMirror(c, th);
+}
+
+namespace {
+
+/// The operations List::sync emitted before it used hashing, computed on
+/// plain keys: the reference the faster version must reproduce exactly.
+struct Op {
+    Rec kind;
+    uint32_t a, b;
+    bool operator==(const Op&) const = default;
+};
+
+std::vector<Op> referenceSync(std::vector<std::string> cur, const std::vector<std::string>& next,
+                              const std::vector<double>& curValues, const std::vector<double>& nextValues) {
+    std::vector<Op> ops;
+    std::vector<double> vals = curValues;
+    auto inNext = [&](const std::string& k) { return std::find(next.begin(), next.end(), k) != next.end(); };
+    for (size_t i = cur.size(); i-- > 0;)
+        if (!inNext(cur[i])) {
+            cur.erase(cur.begin() + static_cast<std::ptrdiff_t>(i));
+            vals.erase(vals.begin() + static_cast<std::ptrdiff_t>(i));
+            ops.push_back({Rec::ListRemove, static_cast<uint32_t>(i), 1});
+        }
+    auto set = [&](size_t i) {
+        if (vals[i] != nextValues[i]) {
+            vals[i] = nextValues[i];
+            ops.push_back({Rec::ListUpdate, static_cast<uint32_t>(i), 0});
+        }
+    };
+    for (size_t i = 0; i < next.size(); ++i) {
+        if (i < cur.size() && cur[i] == next[i]) {
+            set(i);
+            continue;
+        }
+        size_t j = i + 1;
+        while (j < cur.size() && cur[j] != next[i]) ++j;
+        if (j < cur.size()) {
+            std::rotate(cur.begin() + static_cast<std::ptrdiff_t>(i), cur.begin() + static_cast<std::ptrdiff_t>(j),
+                        cur.begin() + static_cast<std::ptrdiff_t>(j) + 1);
+            std::rotate(vals.begin() + static_cast<std::ptrdiff_t>(i), vals.begin() + static_cast<std::ptrdiff_t>(j),
+                        vals.begin() + static_cast<std::ptrdiff_t>(j) + 1);
+            ops.push_back({Rec::ListMove, static_cast<uint32_t>(j), static_cast<uint32_t>(i)});
+            set(i);
+        } else {
+            cur.insert(cur.begin() + static_cast<std::ptrdiff_t>(i), next[i]);
+            vals.insert(vals.begin() + static_cast<std::ptrdiff_t>(i), nextValues[i]);
+            ops.push_back({Rec::ListInsert, static_cast<uint32_t>(i), 0});
+        }
+    }
+    if (cur.size() > next.size())
+        ops.push_back({Rec::ListRemove, static_cast<uint32_t>(next.size()), static_cast<uint32_t>(cur.size() - next.size())});
+    return ops;
+}
+
+std::vector<Op> opsOf(const std::vector<feed::Record>& recs) {
+    std::vector<Op> ops;
+    for (const auto& r : recs) {
+        if (r.kind == Rec::ListRemove) ops.push_back({r.kind, r.index, r.count});
+        else if (r.kind == Rec::ListMove) ops.push_back({r.kind, r.from, r.to});
+        else if (r.kind == Rec::ListInsert || r.kind == Rec::ListUpdate) ops.push_back({r.kind, r.index, 0});
+    }
+    return ops;
+}
+
+/// A key with == but no std::hash: sync must still compile and work.
+struct PlainKey {
+    std::string s;
+    bool operator==(const PlainKey&) const = default;
+};
+
+}  // namespace
+
+TEST(list_sync_matches_the_reference_operations) {
+    feed::Started s;
+    feed::Consumer c;
+    auto& th = singleton<Thermo>();
+    std::mt19937 rng(7);
+    for (int round = 0; round < 400; ++round) {
+        // Few distinct keys, so duplicates, removals and inserts all happen.
+        auto make = [&](size_t n) {
+            std::vector<Reading> v;
+            for (size_t i = 0; i < n; ++i)
+                v.push_back(R("k" + std::to_string(rng() % 12), static_cast<double>(rng() % 3)));
+            return v;
+        };
+        const auto before = make(rng() % 14), after = make(rng() % 14);
+        std::vector<std::string> bk, ak;
+        std::vector<double> bv, av;
+        for (const auto& r : before) bk.push_back(r.sensor), bv.push_back(r.value);
+        for (const auto& r : after) ak.push_back(r.sensor), av.push_back(r.value);
+        const auto expected = referenceSync(bk, ak, bv, av);
+        for (int plain = 0; plain < 2; ++plain) {
+            th.readings.assign(before);
+            c.pump();
+            if (plain) th.readings.sync(after, [](const Reading& r) { return PlainKey{r.sensor}; });
+            else th.readings.sync(after, [](const Reading& r) { return r.sensor; });
+            const auto got = opsOf(c.pump());
+            CHECK(got == expected);
+            CHECK((names(th) == ak));
+            checkMirror(c, th);
+            if (got != expected) return;  // one report is enough
+        }
+    }
 }
 
 TEST(list_eraseIf_and_findIndex) {

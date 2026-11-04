@@ -175,7 +175,17 @@ int main(int argc, char** argv) {
                    std::shuffle(items.begin(), items.end(), rng);
                    list.sync(items, [](const Reading& r) { return r.sensor; });
                }),
-               "us", 20000);
+               "us", 3000);
+        std::vector<Reading> rows;
+        for (int i = 0; i < 5000; ++i) rows.push_back({"sensor-" + std::to_string(i), static_cast<double>(i), {}});
+        list.assign(rows);
+        nativebind_drain(&len);
+        report("List::sync 5000 shuffled", measure(5, [&] {
+                   std::shuffle(rows.begin(), rows.end(), rng);
+                   list.sync(rows, [](const Reading& r) { return r.sensor; });
+                   nativebind_drain(&len);
+               }, 3),
+               "us", 35000);
         list.clear();
         nativebind_drain(&len);
     }
