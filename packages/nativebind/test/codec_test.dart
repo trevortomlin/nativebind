@@ -3,13 +3,34 @@ import 'package:nativebind/generated.dart';
 
 import 'generated/hvac/nativebind_modules.dart';
 
+/// Encodes [value], then decodes it both ways: through [WireReader.value]
+/// and [Codec.decode], and straight from the bytes with [Codec.read].
 T roundTrip<T>(Codec<T> codec, T value) {
   final w = WireWriter(4); // tiny initial capacity exercises growth
   codec.encode(w, value);
   final r = WireReader(w.bytes);
   final out = codec.decode(r.value());
   expect(r.atEnd, isTrue);
+  final direct = WireReader(w.bytes);
+  expect(codec.read(direct), out);
+  expect(direct.atEnd, isTrue);
   return out;
+}
+
+/// The error [read] and [decode] give for the same bytes.
+(String, String) errorsOf<T>(Codec<T> codec, void Function(WireWriter w) write) {
+  final w = WireWriter();
+  write(w);
+  String fail(void Function() f) {
+    try {
+      f();
+    } on BindProtocolException catch (e) {
+      return e.message;
+    }
+    return 'no error';
+  }
+
+  return (fail(() => codec.read(WireReader(w.bytes))), fail(() => codec.decode(WireReader(w.bytes).value())));
 }
 
 void main() {
@@ -85,5 +106,39 @@ void main() {
           1,
           [2]
         ]));
+  });
+
+  test('reading straight from the bytes fails like decoding', () {
+    for (final (read, decode) in [
+      errorsOf(doubleCodec, (w) => w.stringValue('x')),
+      errorsOf(const ListCodec<int>(intCodec), (w) => w.intValue(1)),
+      errorsOf(const ListCodec<int>(intCodec), (w) => w..beginList(1)..stringValue('x')),
+      errorsOf(Mode.$codec, (w) => w.enumValue(99)),
+      errorsOf(Mode.$codec, (w) => w.intValue(1)),
+      errorsOf(ScheduleEntry.$codec, (w) => w.beginStruct(0)),
+      errorsOf(ScheduleEntry.$codec, (w) => w.intValue(1)),
+    ]) {
+      expect(read, isNot('no error'));
+      expect(read, decode);
+    }
+    final w = WireWriter()..intValue(22);
+    expect(doubleCodec.read(WireReader(w.bytes)), 22.0); // an int where a double is expected
+    final big = WireWriter()..beginList(1 << 30); // a count the message cannot hold
+    expect(() => const ListCodec<int>(intCodec).read(WireReader(big.bytes)), throwsA(isA<BindProtocolException>()));
+  });
+
+  test('a struct codec generated without a reader still reads', () {
+    // Code generated before StructCodec.read existed passes only decode.
+    final legacy = StructCodec<(int, String)>(
+      name: 'Pair',
+      fieldCount: 2,
+      decode: (f) => (intCodec.decode(f[0]), stringCodec.decode(f[1])),
+      encode: (w, v) {
+        intCodec.encode(w, v.$1);
+        stringCodec.encode(w, v.$2);
+      },
+    );
+    expect(roundTrip(legacy, (7, 'seven')), (7, 'seven'));
+    expect(roundTrip(ListCodec(legacy), [(1, 'a'), (2, 'b')]), [(1, 'a'), (2, 'b')]);
   });
 }

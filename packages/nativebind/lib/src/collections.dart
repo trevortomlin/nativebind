@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'codec.dart';
 import 'instance.dart';
+import 'wire.dart';
 
 /// One change of a [BoundList], for driving an `AnimatedList`.
 sealed class ListChange<T> {
@@ -87,15 +88,15 @@ class BoundList<T> extends ChangeNotifier with ListBase<T> implements ValueListe
   Never _readOnly() =>
       throw UnsupportedError('BoundList is read-only in Dart; change it in C++ (e.g. through a NATIVEBIND_INVOKE method)');
 
-  // ---- called by the runtime with raw (decoded wire) items
+  // ---- called by the runtime; items are read straight from the record
 
-  void $reset(List<Object?> raw) {
-    _items = raw.map($codec.decode).toList();
+  void $resetFrom(WireReader r, int count) {
+    _items = List<T>.generate(count, (_) => $codec.read(r)); // all decoded before anything changes
     _emit(ListReset<T>(List<T>.unmodifiable(_items)));
   }
 
-  void $insert(int index, Object? raw) {
-    final item = $codec.decode(raw);
+  void $insertFrom(int index, WireReader r) {
+    final item = $codec.read(r);
     _items.insert(index, item);
     _emit(ListInserted<T>(index, item));
   }
@@ -106,8 +107,8 @@ class BoundList<T> extends ChangeNotifier with ListBase<T> implements ValueListe
     _emit(ListRemoved<T>(index, List<T>.unmodifiable(removed)));
   }
 
-  void $update(int index, Object? raw) {
-    final item = $codec.decode(raw);
+  void $updateFrom(int index, WireReader r) {
+    final item = $codec.read(r);
     final previous = _items[index];
     _items[index] = item;
     _emit(ListUpdated<T>(index, previous, item));

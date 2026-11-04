@@ -69,6 +69,10 @@ final class Trend {
       $p.timeCodec.encode(w, v.at);
       $p.doubleCodec.encode(w, v.value);
     },
+    read: (r) => Trend(
+      at: $p.timeCodec.read(r),
+      value: $p.doubleCodec.read(r),
+    ),
   );
 }
 

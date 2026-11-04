@@ -118,6 +118,32 @@ void main() {
     expect(updateUs, lessThan(200000));
   });
 
+  test('runtime: a list reset of 5000 structs (median)', () async {
+    final f = await boot();
+    final list = Thermo.instance.readings;
+    void Function(WireWriter) withHistory(int k) => (w) {
+          w.beginStruct(3);
+          w.stringValue('sensor $k');
+          w.doubleValue(k * 0.5);
+          w.beginList(8);
+          for (var h = 0; h < 8; h++) {
+            w.intValue(h);
+          }
+        };
+    final items = [for (var k = 0; k < 5000; k++) withHistory(k)];
+    final times = <int>[];
+    for (var rep = 0; rep < 9; rep++) {
+      f.feed.listReset(thermo, 0, 2 + rep, items);
+      f.publish();
+      final sw = Stopwatch()..start();
+      NativeBind.instance.drainNow();
+      times.add(sw.elapsedMicroseconds);
+    }
+    expect(list, hasLength(5000));
+    report('list reset of 5000 structs (median)', '${median(times)} µs');
+    expect(median(times), lessThan(100000));
+  });
+
   test('runtime: 5000 optimistic writes', () async {
     final f = await boot();
     final sp = Thermo.instance.setpoint;

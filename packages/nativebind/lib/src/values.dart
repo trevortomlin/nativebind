@@ -61,9 +61,9 @@ class BoundValue<T> extends ChangeNotifier implements ValueListenable<T> {
   /// False once the module instance was destroyed in C++.
   bool get isAlive => $slot.instance.alive;
 
-  /// Decodes a value C++ sent. Called by the runtime before it updates the
+  /// Reads a value C++ sent. Called by the runtime before it updates the
   /// slot; throws without changing anything if the value cannot be decoded.
-  void $takeRemote(Object? raw) => _remote = $codec.decode(raw);
+  void $readRemote(WireReader r) => _remote = $codec.read(r);
 
   /// Called by the runtime when a Prop or Meta record was applied.
   void $onRemote({required bool valueChanged}) {}

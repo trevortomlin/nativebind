@@ -160,6 +160,16 @@ final class ScheduleEntry {
       _$optional_double.encode(w, v.humidity);
       $p.intCodec.encode(w, v.flags);
     },
+    read: (r) => ScheduleEntry(
+      day: $p.intCodec.read(r),
+      start: $p.durationCodec.read(r),
+      heatSetpoint: $p.doubleCodec.read(r),
+      coolSetpoint: $p.doubleCodec.read(r),
+      mode: Mode.$codec.read(r),
+      label: $p.stringCodec.read(r),
+      humidity: _$optional_double.read(r),
+      flags: $p.intCodec.read(r),
+    ),
   );
 }
 
@@ -216,6 +226,11 @@ final class Fault {
       Severity.$codec.encode(w, v.severity);
       _$optional_time.encode(w, v.cleared);
     },
+    read: (r) => Fault(
+      id: $p.stringCodec.read(r),
+      severity: Severity.$codec.read(r),
+      cleared: _$optional_time.read(r),
+    ),
   );
 }
 

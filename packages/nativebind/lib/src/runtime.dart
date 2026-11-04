@@ -296,8 +296,7 @@ final class NativeBind {
       case _Rec.prop:
         final inst = _instances[r.u32()];
         final index = r.u16(), ack = r.u32();
-        final value = r.value();
-        inst?.prop(index).applyValue(value, ack);
+        inst?.prop(index).applyValue(r, ack);
       case _Rec.meta:
         final inst = _instances[r.u32()];
         final index = r.u16();
@@ -321,49 +320,26 @@ final class NativeBind {
       case _Rec.listReset:
         final inst = _instances[r.u32()];
         final index = r.u16(), version = r.u32(), count = r.u32();
-        final items = List<Object?>.generate(count, (_) => r.value());
-        inst?.list(index).reset(version, items);
-      // List operations: the typed list goes first (it decodes the item and
-      // checks the index before changing anything), then the raw mirror.
+        if (count > r.remaining) throw const BindProtocolException('list length exceeds record');
+        inst?.list(index).reset(version, r, count);
+      // List operations decode the item and check the index before changing
+      // anything (see ListSlot).
       case _Rec.listInsert:
         final inst = _instances[r.u32()];
         final index = r.u16(), version = r.u32(), at = r.u32();
-        final item = r.value();
-        return inst != null &&
-            !inst.list(index).apply(version, (items, typed) {
-              RangeError.checkValueInInterval(at, 0, items.length, 'index');
-              typed?.$insert(at, item);
-              items.insert(at, item);
-            });
+        return inst != null && !inst.list(index).insert(version, at, r);
       case _Rec.listRemove:
         final inst = _instances[r.u32()];
         final index = r.u16(), version = r.u32(), at = r.u32(), count = r.u32();
-        return inst != null &&
-            !inst.list(index).apply(version, (items, typed) {
-              RangeError.checkValidRange(at, at + count, items.length);
-              typed?.$remove(at, count);
-              items.removeRange(at, at + count);
-            });
+        return inst != null && !inst.list(index).remove(version, at, count);
       case _Rec.listUpdate:
         final inst = _instances[r.u32()];
         final index = r.u16(), version = r.u32(), at = r.u32();
-        final item = r.value();
-        return inst != null &&
-            !inst.list(index).apply(version, (items, typed) {
-              RangeError.checkValidIndex(at, items);
-              typed?.$update(at, item);
-              items[at] = item;
-            });
+        return inst != null && !inst.list(index).update(version, at, r);
       case _Rec.listMove:
         final inst = _instances[r.u32()];
         final index = r.u16(), version = r.u32(), from = r.u32(), to = r.u32();
-        return inst != null &&
-            !inst.list(index).apply(version, (items, typed) {
-              RangeError.checkValidIndex(from, items, 'from');
-              RangeError.checkValidIndex(to, items, 'to');
-              typed?.$move(from, to);
-              items.insert(to, items.removeAt(from));
-            });
+        return inst != null && !inst.list(index).move(version, from, to);
       case _Rec.signal:
         final inst = _instances[r.u32()];
         final index = r.u16(), argc = r.u8();
