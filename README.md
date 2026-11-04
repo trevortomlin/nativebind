@@ -132,7 +132,7 @@ The byte format is documented in
 | | |
 |---|---|
 | Flutter / Dart | Flutter 3.24+ / Dart 3.5+ |
-| C++ compiler | GCC 11+ or Clang 14+ (C++20) |
+| C++ compiler | GCC 11+ or Clang 14+ (C++20), with RTTI (`typeid` maps types to modules and structs; `-fno-rtti` does not build) |
 | Build | CMake 3.18+ (3.19+ for the app template below), Ninja or Make |
 | Platforms | **Linux** (desktop and embedded, e.g. [flutter-pi](https://github.com/ardera/flutter-pi)) is what is built and tested. The runtime is portable C++20 and the Dart side is plain `dart:ffi`, but other platforms have not been tried yet. |
 
@@ -322,6 +322,11 @@ Aliases (`using`, `typedef`), namespaces and nested types are understood. Give
 structs `bool operator==(const T&) const = default;` so nativebind can skip
 updates that change nothing.
 
+Enums cross as 32-bit values, and a value must be one of the declared
+enumerators: Dart cannot represent anything else, so it reports the record
+and keeps the last good value. Use an integer property for bit flags
+(`A | B`) or raw device values (`static_cast<Mode>(reg)`).
+
 ```cpp
 enum class PlayState { Stopped, Playing, Paused };
 
@@ -412,6 +417,8 @@ Each operation reaches Flutter as one incremental change. Prefer `sync` over
 `assign` when refreshing from a data source: rows keep their identity, so
 animations and scroll positions survive. Lists are read-only in Dart; change
 them through `NATIVEBIND_INVOKE` methods, which keeps the model in C++.
+`sync` compares keys in O(n × m) time: fine for hundreds of rows, but for many
+thousands prefer `assign` or targeted edits.
 
 ### Signals
 
@@ -468,6 +475,11 @@ protected:
 | constructor | initial values, metadata, `validate`/`onWrite` handlers. All of it arrives in Flutter as the initial state. |
 | `onStart()` | anything that needs other modules (`property<T>`, `singleton<T>`, typed references) and timers |
 | `onStop()` | stopping workers, closing devices |
+
+Call `NativeBind.stop()` (or `nativebind::stop()` in a native host) before
+the app exits. Otherwise the runtime stops from a static destructor during
+process exit, and `onStop` runs while other static objects (in your code or
+in libraries) may already be destroyed.
 
 Timers and posting, all on the nativebind thread and cancelled automatically
 when the module is destroyed:
@@ -826,8 +838,10 @@ dart run nativebind_generator --help
 The generator is a dependency-free Dart program with a purpose-built parser
 for the `NATIVEBIND_*` declarations; it is not a C++ compiler. It therefore
 asks the compiler to confirm what it read: the generated glue contains a
-`static_assert` per property, list, struct field and enumerator, and a
-structured binding per struct that fails to compile if a field was missed.
+`static_assert` per property, list, struct field, signal, method and
+enumerator that compares the whole type (nested types, parameters and return
+types included), and a structured binding per struct that fails to compile
+if a field was missed.
 Errors look like compiler diagnostics:
 
 ```
@@ -839,6 +853,11 @@ Limitations: preprocessor conditionals are not evaluated (members inside `#if`
 are always seen, and the runtime check reports the mismatch), and macro
 arguments split at top-level commas, so give types like `std::pair<int, int>`
 an alias first.
+
+Module `.cpp` files are compiled only through their generated `.nb.cpp`, so
+`compile_commands.json` has no entry for them. clangd falls back to a guess
+without the include paths; add the flags in a `.clangd` file next to the
+modules (`CompileFlags: Add: [-std=c++20, -I/path/to/nativebind/native/include]`).
 
 CMake runs the generator for the C++ side through `nativebind_add_modules`. To
 use a precompiled generator (for example when cross-compiling in an SDK

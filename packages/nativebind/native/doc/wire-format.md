@@ -1,4 +1,4 @@
-# nativebind wire format (ABI version 1)
+# nativebind wire format (ABI version 2)
 
 All integers are little-endian. Strings are UTF-8 with a `u32` byte length.
 
