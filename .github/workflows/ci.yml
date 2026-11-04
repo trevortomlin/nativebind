@@ -39,6 +39,11 @@ jobs:
           CXX: ${{ matrix.compiler == 'clang' && 'clang++' || 'g++' }}
           CXXFLAGS: ${{ matrix.stdlib == 'libc++' && '-stdlib=libc++' || '' }}
           LDFLAGS: ${{ matrix.stdlib == 'libc++' && '-stdlib=libc++' || '' }}
+          # Ubuntu's libc++ allocates an exception's message with operator new
+          # (in runtime_error's constructor) and libc++abi frees it with free
+          # (in its destructor): a mismatch between the two system libraries,
+          # reported on any std::runtime_error subclass that is thrown.
+          ASAN_OPTIONS: ${{ matrix.stdlib == 'libc++' && 'alloc_dealloc_mismatch=0' || '' }}
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DNATIVEBIND_SANITIZE=${{ matrix.sanitize }}
           cmake --build build
@@ -86,13 +91,15 @@ jobs:
         with:
           flutter-version: 3.24.0
           cache: true
+      # The lint packages are dev dependencies (never installed by users) and
+      # need a newer SDK than the minimum; the tests do not use them.
       - name: Generator
         working-directory: packages/nativebind_generator
         run: |
-          dart pub get
+          dart pub remove lints
           dart test --exclude-tags perf
       - name: Dart runtime
         working-directory: packages/nativebind
         run: |
-          flutter pub get
+          flutter pub remove flutter_lints
           flutter test --exclude-tags perf
