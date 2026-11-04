@@ -154,13 +154,13 @@ nativebind is not on pub.dev yet, so depend on this repository through git:
 dependencies:
   nativebind:
     git:
-      url: https://github.com/nativebind-hmi/nativebind
+      url: https://github.com/trevortomlin/nativebind
       path: packages/nativebind
 
 dev_dependencies:
   nativebind_generator:
     git:
-      url: https://github.com/nativebind-hmi/nativebind
+      url: https://github.com/trevortomlin/nativebind
       path: packages/nativebind_generator
 ```
 

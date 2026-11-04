@@ -11,7 +11,7 @@ The supported compiler floor is GCC 11, so don't use C++23 library features in
 `packages/nativebind/native/`.
 
 ```sh
-git clone https://github.com/nativebind-hmi/nativebind && cd nativebind
+git clone https://github.com/trevortomlin/nativebind && cd nativebind
 (cd packages/nativebind_generator && dart pub get)
 (cd packages/nativebind && flutter pub get)
 (cd examples/showcase && flutter pub get)

@@ -10,7 +10,7 @@ Reads nativebind modules written in C++ and generates:
   `nativebind_modules.dart`, which lists every module.
 
 You never write FFI code or bindings by hand. See the
-[nativebind README](https://github.com/nativebind-hmi/nativebind#readme) for the
+[nativebind README](https://github.com/trevortomlin/nativebind#readme) for the
 full guide.
 
 ## Usage
