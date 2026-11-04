@@ -2,6 +2,7 @@
 // optimistic writes and their acknowledgment, edits, lists, signals, calls,
 // instances and resyncs.
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nativebind/generated.dart';
@@ -205,6 +206,27 @@ void main() {
       expect(() => sp.value = 25, throwsA(isA<BindAccessDenied>()));
       expect(sp.value, 21.5);
       expect(sp.isPending, isFalse);
+    });
+
+    test('edit throttling follows elapsed time, not the wall clock', () async {
+      final f = await boot();
+      final sp = Thermo.instance.setpoint;
+      // Fake time moves only the timers, as a wall-clock jump (an NTP step at
+      // boot) would move only DateTime.now().
+      fakeAsync((time) {
+        final edit = sp.beginEdit(interval: const Duration(milliseconds: 40));
+        edit.update(20);
+        expect(f.writes, hasLength(1));
+        time.elapse(const Duration(milliseconds: 100));
+        edit.update(21);
+        expect(f.writes, hasLength(2)); // the interval is over: sent at once
+        edit.update(22);
+        expect(f.writes, hasLength(2)); // within the next interval: held back
+        time.elapse(const Duration(milliseconds: 40));
+        expect(f.writes, hasLength(3)); // trailing edge
+        expect(f.valueOf(f.writes.last), 22.0);
+        edit.cancel();
+      });
     });
 
     test('edits throttle writes and ignore incoming values until commit', () async {

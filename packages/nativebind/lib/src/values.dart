@@ -234,7 +234,6 @@ final class PropertyEdit<T> {
   T? _latest;
   bool _hasLatest = false;
   bool _unsent = false;
-  DateTime? _lastSend;
   bool _active = true;
 
   bool get isActive => _active;
@@ -246,16 +245,22 @@ final class PropertyEdit<T> {
     _latest = clamped;
     _hasLatest = true;
     _property._showLocal(clamped);
-    final now = DateTime.now();
-    if (_lastSend == null || now.difference(_lastSend!) >= _interval) {
-      _flush();
+    if (_timer == null) {
+      _send();
     } else {
-      _unsent = true;
-      _timer ??= Timer(_interval - now.difference(_lastSend!), () {
-        _timer = null;
-        if (_unsent && _active) _flush();
-      });
+      _unsent = true; // sent when the interval since the last send is over
     }
+  }
+
+  // Sends now and holds later updates back for [_interval]. A Timer measures
+  // the interval: it runs on a monotonic clock, so a wall-clock step (an NTP
+  // correction at boot) neither stalls a drag nor lets it burst.
+  void _send() {
+    _flush();
+    _timer = Timer(_interval, () {
+      _timer = null;
+      if (_unsent && _active) _send();
+    });
   }
 
   /// Sends the final value (if not sent yet) and ends the edit; the control
@@ -291,7 +296,6 @@ final class PropertyEdit<T> {
 
   void _flush() {
     _unsent = false;
-    _lastSend = DateTime.now();
     try {
       _property._send(_latest as T);
     } on BindException {

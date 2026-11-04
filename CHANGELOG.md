@@ -37,6 +37,9 @@ break the API).
 
 ### Fixed
 
+- `PropertyEdit` throttles writes by elapsed time instead of the wall clock,
+  so a clock step during a drag (an NTP correction right after boot) no
+  longer holds writes back or sends them in a burst.
 - A method call whose arguments fail to encode returns a failed `Future`
   instead of throwing at the call site.
 - `BoundList.changes` ends when the module instance is destroyed or
