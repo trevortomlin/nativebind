@@ -1,5 +1,6 @@
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -89,6 +90,40 @@ TEST(worker_restarts_after_stop) {
     w.stop();
     w.post([&] { ++n; });
     CHECK(waitFor([&] { return n.load() == 2; }));
+}
+
+TEST(a_worker_owned_by_a_module_stops_after_its_onStop) {
+    feed::Started s;
+    Zone& z = spawn<Zone>(21, "owner");
+    auto w = std::make_unique<Worker>(z, "owned");
+    std::atomic<int> ticks{0};
+    w->every(1ms, [&] { ++ticks; });
+    CHECK(waitFor([&] { return ticks.load() > 0; }));
+    bool runningInOnStop = false;
+    Zone::stopHook = [&] { runningInOnStop = w->running(); };
+    destroy(z);
+    CHECK(flush());
+    Zone::stopHook = nullptr;
+    CHECK(runningInOnStop);  // onStop may still use it...
+    CHECK(!w->running());    // ...and it is stopped before the module is deleted
+    // A late post must not bring it back for a module that is gone.
+    std::atomic<bool> ran{false};
+    w->post([&] { ran = true; });
+    std::this_thread::sleep_for(20ms);
+    CHECK(!ran.load());
+    CHECK(!w->running());
+    w.reset();  // outliving its owner is fine
+}
+
+TEST(a_worker_destroyed_before_its_owner_is_forgotten) {
+    feed::Started s;
+    Zone& z = spawn<Zone>(22, "owner");
+    {
+        Worker w(z, "short-lived");
+        w.post([] {});
+    }
+    destroy(z);  // must not touch the destroyed worker
+    CHECK(flush());
 }
 
 TEST(ui_writes_are_forwarded_to_the_io_thread) {

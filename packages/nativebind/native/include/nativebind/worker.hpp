@@ -35,8 +35,8 @@ namespace nativebind {
 ///             pressure = r.pressure;
 ///             humidity = r.humidity;
 ///         }
-///         SerialStation station_;     // used only on io_
-///         nativebind::Worker io_{"weather-io"}; // declare last: stops before the rest is destroyed
+///         SerialStation station_;                  // used only on io_
+///         nativebind::Worker io_{*this, "weather-io"}; // stops after onStop
 ///     };
 ///
 /// Rules of thumb:
@@ -51,6 +51,11 @@ public:
 
     /// [name] shows up in `top -H` and debuggers (max 15 characters on Linux).
     explicit Worker(std::string name = "nativebind-worker");
+    /// A worker owned by a module: the runtime stops it after the module's
+    /// onStop and before the module is deleted, wherever it is declared.
+    /// Once stopped that way it accepts no more work (post and every are
+    /// ignored), so a late post cannot restart I/O on closed resources.
+    Worker(Module& owner, std::string name);
     /// Stops and joins the thread.
     ~Worker();
 
@@ -58,9 +63,11 @@ public:
     Worker& operator=(const Worker&) = delete;
 
     /// Starts the thread (also done by the first post/every). Idempotent.
+    /// Does nothing once the owner module ended.
     void start();
     /// Stops accepting work, lets the current task finish, joins the thread and
     /// drops queued tasks. Idempotent; must not be called from the worker itself.
+    /// An unowned worker restarts on the next post/every.
     void stop();
     bool running() const;
     /// True on this worker's thread.
@@ -100,6 +107,9 @@ private:
     std::atomic<std::thread::id> threadId_{};
     std::atomic<bool> stopping_{false};
     bool running_ = false;
+    bool ended_ = false;  // the owner module ended: no more work
+    Module* owner_ = nullptr;
+    uint64_t ownerEnd_ = 0;
 };
 
 /// Groups changes so Flutter applies them together: while any Batch is alive

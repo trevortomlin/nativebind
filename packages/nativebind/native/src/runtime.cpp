@@ -352,7 +352,7 @@ void Runtime::destroyNow(uint32_t handle, bool callStop) {
         std::lock_guard g(pendingMutex_);
         pendingTimers_.erase(handle);
     }
-    owned->endConnections();  // waits for its listeners running on other threads
+    owned->endOwned();  // stops its Workers, ends its connections
     owned.reset();
 }
 

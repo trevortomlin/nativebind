@@ -15,7 +15,7 @@ namespace nativebind {
 Module::Module() : handle_(detail::newHandle()) {}
 
 Module::~Module() {
-    endConnections();  // modules the runtime never adopted (it ends them in destroyNow)
+    endOwned();  // modules the runtime never adopted (it ends them in destroyNow)
     detail::moduleGone(handle_);
 }
 
@@ -149,18 +149,32 @@ SignalBase::SignalBase(Module* owner, const char* name)
     owner->signals_.push_back(this);
 }
 
-void SignalBase::endWith(Module& listener, std::function<void()> disconnect) {
-    std::lock_guard g(listener.connectionsMutex_);
-    listener.connections_.push_back(std::move(disconnect));
+void SignalBase::endWith(Module& listener, std::function<void()> disconnect) { listener.atEnd(std::move(disconnect)); }
+
+uint64_t Module::atEnd(std::function<void()> fn) {
+    std::lock_guard g(endsMutex_);
+    ends_.emplace_back(++nextEnd_, std::move(fn));
+    return nextEnd_;
 }
 
-void Module::endConnections() {
-    std::vector<std::function<void()>> ends;
-    {
-        std::lock_guard g(connectionsMutex_);
-        ends.swap(connections_);
+void Module::cancelAtEnd(uint64_t id) {
+    std::unique_lock l(endsMutex_);
+    if (std::erase_if(ends_, [id](const auto& e) { return e.first == id; }) > 0) return;
+    endDone_.wait(l, [&] { return ending_ != id; });
+}
+
+void Module::endOwned() {
+    std::unique_lock l(endsMutex_);
+    while (!ends_.empty()) {
+        auto [id, fn] = std::move(ends_.back());
+        ends_.pop_back();
+        ending_ = id;
+        l.unlock();
+        fn();  // outside the lock: it may wait for other threads
+        l.lock();
+        ending_ = 0;
+        endDone_.notify_all();
     }
-    for (auto& end : ends) end();
 }
 
 namespace detail {

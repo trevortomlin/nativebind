@@ -54,7 +54,6 @@ public:
 
 protected:
     void onStart() override { io_.every(100ms, [this] { transfer(); }); }
-    void onStop() override { io_.stop(); }
 
 private:
     // Runs on io_, never on the nativebind thread, so blocking here is fine.
@@ -74,7 +73,7 @@ private:
     }
 
     std::atomic<bool> paused_{false};
-    nativebind::Worker io_{"download"};  // declared last: stops before the members above go away
+    nativebind::Worker io_{*this, "download"};  // stopped after onStop, before the members above go away
 };
 
 /// Starts and removes downloads.

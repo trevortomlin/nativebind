@@ -10,6 +10,9 @@ break the API).
 
 ### Added
 
+- `Worker(Module& owner, name)`: the runtime stops the worker after the
+  owner's `onStop` and before the module is deleted, wherever the member is
+  declared, and a late `post` no longer restarts it.
 - `Signal::connect(Module& listener, fn)`: the connection ends when
   `listener` is destroyed (after its `onStop`), so a listener capturing
   another module's `this` is never called after that module is gone.

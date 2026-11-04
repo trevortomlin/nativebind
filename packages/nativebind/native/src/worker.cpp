@@ -13,7 +13,28 @@ namespace nativebind {
 
 Worker::Worker(std::string name) : name_(std::move(name)) {}
 
+Worker::Worker(Module& owner, std::string name) : name_(std::move(name)), owner_(&owner) {
+    ownerEnd_ = owner.atEnd([this] {
+        {
+            std::lock_guard g(mutex_);
+            ended_ = true;
+            owner_ = nullptr;
+        }
+        try {
+            stop();
+        } catch (const std::exception& e) {
+            detail::logf("worker %s: %s", name_.c_str(), e.what());
+        }
+    });
+}
+
 Worker::~Worker() {
+    Module* owner;
+    {
+        std::lock_guard g(mutex_);
+        owner = owner_;
+    }
+    if (owner) owner->cancelAtEnd(ownerEnd_);  // waits if the owner is stopping us right now
     try {
         stop();
     } catch (...) {
@@ -22,7 +43,7 @@ Worker::~Worker() {
 
 void Worker::start() {
     std::lock_guard g(mutex_);
-    if (running_) return;
+    if (running_ || ended_) return;
     running_ = true;
     stopping_ = false;
     thread_ = std::thread([this] {
@@ -61,7 +82,7 @@ void Worker::post(std::function<void()> task) {
     start();
     {
         std::lock_guard g(mutex_);
-        if (stopping_) return;
+        if (stopping_ || !running_) return;
         tasks_.push_back(std::move(task));
     }
     cv_.notify_one();
@@ -74,6 +95,7 @@ uint64_t Worker::every(std::chrono::milliseconds period, std::function<void()> t
     {
         std::lock_guard g(mutex_);
         id = nextId_++;
+        if (!running_) return id;  // owner ended: never runs
         periodic_[id] = Periodic{Clock::now() + (runNow ? std::chrono::milliseconds(0) : period), period,
                                  std::make_shared<std::function<void()>>(std::move(task))};
     }

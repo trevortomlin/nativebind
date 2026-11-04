@@ -645,7 +645,6 @@ public:
     }
 protected:
     void onStart() override { io_.every(100ms, [this] { transfer(); }); }
-    void onStop() override { io_.stop(); }
 private:
     void transfer() {                          // on io_: blocking is fine here
         auto n = socket_.read(buffer_);
@@ -654,7 +653,7 @@ private:
         progress = double(received) / total_;
     }
     Socket socket_;                            // used only on io_
-    nativebind::Worker io_{"download"};        // declare last: it stops first
+    nativebind::Worker io_{*this, "download"}; // stopped after onStop, before the rest goes away
 };
 ```
 
@@ -668,7 +667,7 @@ private:
 |---|---|
 | block the nativebind thread (I/O in `onWrite`, invokes, timers) | `io_.post(...)` |
 | share plain members between a worker and the nativebind thread | a bound property, or `post` |
-| let a worker outlive its module | `io_.stop()` in `onStop()`, and declare the `Worker` last |
+| let a worker outlive its module | give it its module, `Worker io_{*this, "name"}`, or `io_.stop()` in `onStop()` |
 
 `Worker::sleepFor` returns early when the worker stops, for long loops.
 Workers get thread names (visible in `top -H` and debuggers), and an exception
