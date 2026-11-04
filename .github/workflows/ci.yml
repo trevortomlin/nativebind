@@ -30,6 +30,7 @@ jobs:
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DNATIVEBIND_SANITIZE=${{ matrix.sanitize }}
           cmake --build build
           ./build/tests/nativebind_tests
+          ctest --test-dir build -L integration --output-on-failure
 
   dart:
     name: Generator, Dart runtime and example

@@ -191,8 +191,10 @@ cmake -B build-tsan -DCMAKE_BUILD_TYPE=Debug -DNATIVEBIND_SANITIZE=thread
 
 In an application, add the module sources with `nativebind_add_modules`. It
 generates the glue at build time and links `nativebind::runtime` (an OBJECT
-library) into your shared library, which then exports only the `nativebind_*`
-C functions:
+library) into your shared library. Unless you set `CXX_VISIBILITY_PRESET`
+yourself, it also hides every symbol except the `nativebind_*` C functions.
+The generator reads headers in the target's include directories
+(`target_include_directories`) as well as in `INCLUDE_DIRS`:
 
 ```cmake
 add_subdirectory(path/to/nativebind/native nativebind)

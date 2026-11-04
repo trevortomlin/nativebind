@@ -211,7 +211,8 @@ nativebind_add_modules(my_backend SOURCES
 
 `nativebind_add_modules` runs the generator at build time (and again whenever a
 module or a header it includes changes), compiles the glue, and links the
-nativebind runtime into `my_backend`.
+nativebind runtime into `my_backend`. It also hides every symbol except the
+`nativebind_*` C ABI, unless you set the target's visibility yourself.
 
 Then have the Linux runner build the library and bundle it next to the app.
 In `linux/CMakeLists.txt`, after `add_subdirectory("runner")`:

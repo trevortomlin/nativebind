@@ -38,7 +38,6 @@ set(NATIVEBIND_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${NATIVEBIND_DIR}/native" nativebind)
 
 add_library(showcase_backend SHARED)
-set_target_properties(showcase_backend PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 target_compile_options(showcase_backend PRIVATE -Wall -Wextra)
 nativebind_add_modules(showcase_backend SOURCES
   modules/counter.cpp

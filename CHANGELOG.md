@@ -19,6 +19,11 @@ break the API).
 
 ### Changed
 
+- `nativebind_add_modules` passes the target's include directories
+  (`target_include_directories`) to the generator, so headers found there
+  need no `INCLUDE_DIRS`, and gives a shared library hidden symbol
+  visibility unless `CXX_VISIBILITY_PRESET` is already set, so only the
+  `nativebind_*` C ABI is exported without extra setup.
 - `nativebind::Meta::label` is a `std::string` (empty = derived from the
   member name). A label built at run time used to dangle once its string was
   freed. `.label = "..."` initializers are unchanged; code that tested

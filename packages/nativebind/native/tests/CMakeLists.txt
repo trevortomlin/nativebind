@@ -23,6 +23,17 @@ target_compile_options(nativebind_tests PRIVATE ${NATIVEBIND_WARNINGS} -Wno-old-
 
 add_test(NAME nativebind_tests COMMAND nativebind_tests)
 
+# Builds tests/cmake_project the way an app would (needs `dart`): the
+# generator sees target_include_directories, and only nativebind_* is exported.
+add_test(NAME nativebind_cmake_integration
+  COMMAND ${CMAKE_COMMAND}
+    -DNATIVE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/..
+    -DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/cmake_project
+    -DCXX=${CMAKE_CXX_COMPILER}
+    -DGENERATOR=${CMAKE_GENERATOR}
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake_check.cmake)
+set_tests_properties(nativebind_cmake_integration PROPERTIES LABELS integration)
+
 # Shared library with the test modules, loaded by the Dart integration tests
 # (packages/nativebind/test/integration_test.dart).
 add_library(nativebind_test_modules SHARED modules/thermo.nb.cpp modules/device.nb.cpp)
