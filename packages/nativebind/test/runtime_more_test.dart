@@ -117,6 +117,19 @@ void main() {
     expect(f.resyncRequests, 0);
   });
 
+  test('instances keyed above 2^63 are ordered like C++ (unsigned)', () async {
+    final f = await boot();
+    const high = -0x8000000000000000; // bits of 2^63: C++'s largest of the three
+    push(f, (feed) {
+      feed
+        ..added(20, f.idOf('Zone'), key: high)
+        ..added(21, f.idOf('Zone'), key: 5)
+        ..added(22, f.idOf('Zone'), key: 1);
+    });
+    expect(Zone.instances.map((z) => z.key).toList(), [1, 5, high]);
+    expect(Zone.byKey(high), isNotNull);
+  });
+
   test('an instance re-added with a new handle gets a fresh proxy', () async {
     final f = await boot();
     push(f, (feed) => feed..added(10, f.idOf('Zone'), key: 4));

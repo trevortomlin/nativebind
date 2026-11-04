@@ -511,7 +511,8 @@ for (Download* d : nativebind::instances<Download>()) { ... }        // on the n
 ```
 
 In Dart, `Download.instances` is a `ValueListenable<List<Download>>` ordered by
-key, and `Download.byKey(k)` finds one.
+key, and `Download.byKey(k)` finds one. Keys are `uint64_t`; one at or above
+2^63 is a negative Dart `int` with the same 64 bits, and is still ordered last.
 
 ### Reaching other modules
 

@@ -37,6 +37,8 @@ break the API).
 
 ### Fixed
 
+- Instances with keys at or above 2^63 are ordered like C++ (unsigned) in
+  `instances`; they came first because Dart read the key as signed.
 - After a hot restart, a call the previous isolate made that finishes later
   is no longer delivered to the new isolate, where it completed the call
   with the same id (calls are numbered from 1 again) with the wrong result.
