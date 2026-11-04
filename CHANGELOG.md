@@ -37,6 +37,8 @@ break the API).
 
 ### Fixed
 
+- A method call whose arguments fail to encode returns a failed `Future`
+  instead of throwing at the call site.
 - `BoundList.changes` ends when the module instance is destroyed or
   nativebind stops, like signal streams; before, it stayed open.
 - Instances with keys at or above 2^63 are ordered like C++ (unsigned) in

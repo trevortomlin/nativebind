@@ -431,7 +431,11 @@ final class NativeBind {
   Future<R> invoke<R>(Instance inst, int method, void Function(WireWriter w)? args, Codec<R> codec) {
     if (!inst.alive) return Future.error(BindInstanceGone('${inst.typeName}: the instance was destroyed'));
     final w = scratchWriter..clear();
-    args?.call(w);
+    try {
+      args?.call(w);
+    } catch (e, st) {
+      return Future.error(e, st); // like every other failure of a call
+    }
     _callId = (_callId + 1) & 0xffffffff;
     final id = _callId;
     final status = native.invoke(inst.handle, method, w.bytes, id);

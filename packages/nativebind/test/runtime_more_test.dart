@@ -141,6 +141,14 @@ void main() {
     expect(listDone, isTrue);
   });
 
+  test('a call whose arguments fail to encode fails its future, not the caller', () async {
+    final f = await boot();
+    late Future<void> call;
+    expect(() => call = Thermo.instance.$invoke(0, (w) => throw StateError('cannot encode'), voidCodec), returnsNormally);
+    await expectLater(call, throwsStateError);
+    expect(f.invokes, isEmpty); // nothing reached C++
+  });
+
   test('an instance re-added with a new handle gets a fresh proxy', () async {
     final f = await boot();
     push(f, (feed) => feed..added(10, f.idOf('Zone'), key: 4));
