@@ -149,8 +149,13 @@ void Worker::run() {
             lk.lock();
             continue;
         }
-        if (next != periodic_.end()) cv_.wait_until(lk, next->second.due);
-        else cv_.wait(lk);
+        if (next != periodic_.end()) {
+            // A copy: the wait releases the lock, and cancel() may free the job.
+            const Clock::time_point due = next->second.due;
+            cv_.wait_until(lk, due);
+        } else {
+            cv_.wait(lk);
+        }
     }
 }
 

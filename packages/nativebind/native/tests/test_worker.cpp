@@ -82,6 +82,16 @@ TEST(worker_survives_exceptions_and_stops_long_loops) {
     w.stop();  // idempotent
 }
 
+TEST(cancelling_the_job_a_worker_waits_for_is_safe) {
+    Worker w;
+    const auto id = w.every(std::chrono::seconds(10), [] {});
+    std::this_thread::sleep_for(20ms);  // the worker now waits until that job is due
+    w.cancel(id);                       // frees the job...
+    std::atomic<bool> ran{false};
+    w.post([&] { ran = true; });  // ...and wakes the worker, which must not read it
+    CHECK(waitFor([&] { return ran.load(); }));
+}
+
 TEST(a_stopped_worker_ignores_work_until_started_again) {
     Worker w;
     std::atomic<int> n{0};

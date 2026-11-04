@@ -57,6 +57,8 @@ break the API).
 
 ### Fixed
 
+- Cancelling the periodic job a `Worker` was waiting for no longer makes
+  the worker read freed memory when it wakes up.
 - A write guard runs without the runtime's registry lock, so it may call
   nativebind (read another module's property, spawn an instance). Before, a
   guard that locked the registry again deadlocked the UI write, and the docs
