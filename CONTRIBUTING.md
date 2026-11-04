@@ -77,7 +77,9 @@ one domain belong in a library built on top.
   `packages/nativebind/native/tests`, Dart tests in `packages/nativebind/test`,
   generator tests in `packages/nativebind_generator/test` (every user-facing
   error message is covered in `errors_test.dart`).
-- Update [the guide](docs/guide.md) and `CHANGELOG.md` when behavior or API changes.
+- Update [the guide](docs/guide.md) when behavior or API changes, and add an
+  entry under `## Unreleased` in `CHANGELOG.md` (create the section if a
+  release just removed it). [RELEASING.md](RELEASING.md) covers releases.
 - Make sure CI is green.
 
 By contributing you agree that your contributions are licensed under the MIT
