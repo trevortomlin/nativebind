@@ -145,6 +145,7 @@ private:
     std::vector<uint8_t> drainBuffer_;
 
     std::mutex wakeMutex_;
+    std::atomic<bool> consumer_{false};  // a port or callback is attached
     int64_t port_ = 0;
     void (*wakeCallback_)(void*) = nullptr;
     void* wakeUser_ = nullptr;

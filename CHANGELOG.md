@@ -23,6 +23,10 @@ break the API).
 
 ### Fixed
 
+- Signals emitted while a full resync is pending (in `onStart`, right after
+  an isolate attaches, or after a list gap) reach Flutter after the full
+  state instead of being dropped. Signals are not queued while no isolate is
+  attached.
 - `Signal::disconnect` waits until the listener is no longer running on
   another thread, so what it captured can be destroyed right after. A
   listener may still disconnect itself.

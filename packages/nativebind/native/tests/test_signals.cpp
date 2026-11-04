@@ -96,3 +96,28 @@ TEST(an_owned_connection_outlived_by_its_owner_is_harmless) {
     CHECK(flush());
     CHECK_EQ(calls, 1);
 }
+
+TEST(signals_survive_a_pending_resync) {
+    feed::Started s;
+    auto& th = singleton<Thermo>();
+    feed::Consumer c;  // attaching requests a full resync
+    th.overTemp(40.0);  // emitted before that resync was drained
+    c.pump();
+    CHECK_EQ(c.mirror.signals.size(), size_t{1});
+    th.overTemp(41.0);  // queued...
+    nativebind_request_resync();  // ...then the queue is superseded by a full state
+    th.note(std::string("after"), 2);
+    c.pump();
+    CHECK_EQ(c.mirror.signals.size(), size_t{3});
+    CHECK_EQ(c.mirror.signals[1].values[0].d, 41.0);
+    CHECK_EQ(c.mirror.signals[2].values[0].s, std::string("after"));
+}
+
+TEST(signals_are_not_queued_without_a_consumer) {
+    feed::Started s;
+    auto& th = singleton<Thermo>();
+    for (int i = 0; i < 1000; ++i) th.overTemp(double(i));  // nobody is listening
+    feed::Consumer c;
+    c.pump();
+    CHECK(c.mirror.signals.empty());
+}

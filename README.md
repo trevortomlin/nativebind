@@ -425,7 +425,9 @@ player.trackChanged.connect(*this, [this](const std::string& t) { show(t); });  
 ```
 
 Signals are for events without a current value ("track ended", "login
-failed"). For state, use a property.
+failed"). For state, use a property. Flutter receives every signal emitted
+while it is attached, including those from `onStart`; signals emitted while
+no isolate is attached are not kept.
 
 C++ listeners run on the emitting thread. When a listener uses another
 module, pass that module to `connect`: the connection then ends when the

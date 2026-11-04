@@ -42,9 +42,9 @@ u8 kind | u32 payload length | payload
 
 Consumers must skip unknown kinds using the length.
 
-Within one drain, records are ordered: (Resync + full state) **or** (queued
-events in order, then Meta records, then Prop records), followed by Result
-records. Apply the whole batch before running signal handlers so that
+Within one drain, records are ordered: (Resync + full state, then the Signal
+records queued meanwhile) **or** (queued events in order, then Meta records,
+then Prop records), followed by Result records. Apply the whole batch before running signal handlers so that
 handlers see the latest values.
 
 | Kind | Name | Payload |
@@ -83,7 +83,11 @@ Prop lost the quality byte.
 - **Wake-ups**: the runtime posts an integer to the attached port once per
   batch (not per change). Drain on wake; the runtime wakes again after the
   next change.
-- **Attach** (`nativebind_attach_port`) drops queued results and makes the next
-  drain a Resync. Call it on every isolate start, including hot restarts.
+- **Attach** (`nativebind_attach_port`) drops queued events and results and
+  makes the next drain a Resync. Call it on every isolate start, including
+  hot restarts.
+- **Signals** are queued only while a consumer is attached. A Resync
+  supersedes queued state records but not signals: those emitted before it
+  is drained (e.g. in `onStart`) follow the full state.
 - If the consumer stops draining and more than 4 MB of events queue up, the
-  queue is dropped and the next drain is a Resync.
+  queue, signals included, is dropped and the next drain is a Resync.

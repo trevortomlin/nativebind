@@ -427,8 +427,10 @@ void Runtime::attachPort(int64_t port) {
     }
     {
         std::lock_guard g(eventsMutex_);
+        events_.clear();  // queued for the previous consumer
         results_.clear();
     }
+    consumer_ = port != 0;
     resync_ = true;
     wakePending_ = false;
     wake();
@@ -443,8 +445,10 @@ void Runtime::attachCallback(void (*cb)(void*), void* user) {
     }
     {
         std::lock_guard g(eventsMutex_);
+        events_.clear();  // queued for the previous consumer
         results_.clear();
     }
+    consumer_ = cb != nullptr;
     resync_ = true;
     wakePending_ = false;
     wake();
@@ -486,7 +490,9 @@ void Runtime::metaChanged(PropBase& p) {
 }
 
 void Runtime::enqueueEvent(Rec kind, BuildFn build, const void* ctx) {
-    if (resync_.load()) return;
+    // A pending resync sends the full state, which supersedes state records.
+    // Signals are events without state, so they are kept for an attached consumer.
+    if (resync_.load() && (kind != Rec::Signal || !consumer_.load())) return;
     bool overflow = false;
     {
         std::lock_guard g(eventsMutex_);
@@ -505,7 +511,7 @@ void Runtime::enqueueEvent(Rec kind, BuildFn build, const void* ctx) {
         }
     }
     if (overflow) {
-        logf("change feed overflow (consumer not draining); the next drain is a full resync");
+        logf("change feed overflow (consumer not draining); the next drain is a full resync and queued signals are dropped");
         resync_ = true;
     }
     wake();
@@ -572,6 +578,22 @@ void Runtime::endBatch() {
     }
 }
 
+namespace {
+// Copies the Signal records of a queue of framed records (u8 kind, u32 length, payload).
+void keepSignals(const std::vector<uint8_t>& records, std::vector<uint8_t>& out) {
+    size_t at = 0;
+    while (at + 5 <= records.size()) {
+        uint32_t len;
+        std::memcpy(&len, records.data() + at + 1, 4);
+        const size_t end = at + 5 + len;
+        if (records[at] == static_cast<uint8_t>(Rec::Signal))
+            out.insert(out.end(), records.begin() + static_cast<std::ptrdiff_t>(at),
+                       records.begin() + static_cast<std::ptrdiff_t>(end));
+        at = end;
+    }
+}
+}  // namespace
+
 const std::vector<uint8_t>& Runtime::drain() {
     drainBuffer_.clear();
     // Never block the UI thread on a batch. If one is open, report nothing
@@ -587,8 +609,10 @@ const std::vector<uint8_t>& Runtime::drain() {
     Writer w(drainBuffer_);
     std::shared_lock reg(registry_);
     if (resync_.exchange(false)) {
+        std::vector<uint8_t> signals;
         {
             std::lock_guard g(eventsMutex_);
+            keepSignals(events_, signals);
             events_.clear();
         }
         {
@@ -599,6 +623,7 @@ const std::vector<uint8_t>& Runtime::drain() {
             dirtyMeta_.clear();
         }
         encodeFullState(w);
+        drainBuffer_.insert(drainBuffer_.end(), signals.begin(), signals.end());
     } else {
         {
             std::lock_guard g(eventsMutex_);
