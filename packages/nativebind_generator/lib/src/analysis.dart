@@ -257,6 +257,7 @@ class Analyzer {
     final found = _lookup(path, ctx, absolute: name.absolute);
     switch (found) {
       case EnumDecl():
+        _checkEnumRange(found);
         return EnumType(found.name, decl: found);
       case StructDecl():
         structOf(found); // validates the fields now, with a precise location
@@ -268,6 +269,22 @@ class Analyzer {
     throw GeneratorException(e.loc, 'unknown type `${e.text}` for $what',
         hint: 'define the enum or struct in this file or in a header it #includes; headers outside the file\'s '
             'directory need -I <dir> (CMake: nativebind_add_header_dirs)');
+  }
+
+  final _rangeChecked = <EnumDecl>{};
+
+  /// Enums cross the wire as i32: a value outside that range would arrive
+  /// truncated (0xFFFFFFFF as -1) and match no Dart enum value. Only enums
+  /// that actually cross the binding are checked.
+  void _checkEnumRange(EnumDecl d) {
+    if (!_rangeChecked.add(d)) return;
+    for (final v in d.values) {
+      if (v.value < -0x80000000 || v.value > 0x7fffffff) {
+        throw GeneratorException(d.loc, 'enumerator ${d.name}::${v.name} = ${v.value} does not fit the binding',
+            hint: 'enums cross the binding as int32 values (-2147483648 to 2147483647); '
+                'use smaller values, or send the value as an integer property instead');
+      }
+    }
   }
 
   /// Qualifies a NATIVEBIND_INVOKE_AS argument so the generated glue (in
