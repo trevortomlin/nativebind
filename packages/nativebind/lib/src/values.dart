@@ -17,8 +17,8 @@ Type _typeOf<X>() => X;
 ///     ValueListenableBuilder(valueListenable: Player.instance.position, builder: ...)
 class BoundValue<T> extends ChangeNotifier implements ValueListenable<T> {
   BoundValue.$(this.$slot, this.$codec) {
+    if ($slot.hasValue) _remote = $codec.decode($slot.raw); // before binding: a failure can be retried
     $slot.bind(this);
-    if ($slot.hasValue) _remote = $codec.decode($slot.raw);
   }
 
   final PropSlot $slot;
@@ -61,10 +61,12 @@ class BoundValue<T> extends ChangeNotifier implements ValueListenable<T> {
   /// False once the module instance was destroyed in C++.
   bool get isAlive => $slot.instance.alive;
 
-  /// Called by the runtime when a Prop or Meta record arrived.
-  void $onRemote({required bool valueChanged}) {
-    if (valueChanged) _remote = $codec.decode($slot.raw);
-  }
+  /// Decodes a value C++ sent. Called by the runtime before it updates the
+  /// slot; throws without changing anything if the value cannot be decoded.
+  void $takeRemote(Object? raw) => _remote = $codec.decode(raw);
+
+  /// Called by the runtime when a Prop or Meta record was applied.
+  void $onRemote({required bool valueChanged}) {}
 
   void $notify() => notifyListeners();
 

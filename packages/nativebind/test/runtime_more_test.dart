@@ -228,4 +228,94 @@ void main() {
     expect(() => z.label.value = 'y', throwsA(isA<BindInstanceGone>()));
     expect(() => z.label.beginEdit(), throwsA(isA<BindInstanceGone>()));
   });
+
+  group('one bad record does not poison its batch', () {
+    late List<FlutterErrorDetails> errors;
+    setUp(() {
+      errors = [];
+      final old = FlutterError.onError;
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = old);
+    });
+
+    test('later records and call results in the batch still apply', () async {
+      final f = await boot();
+      final t = Thermo.instance;
+      final stage = t.stage; // bound, so its Enum codec decodes incoming values
+      final sum = t.add(1, 2);
+      final call = f.invokes.single.id;
+      push(
+          f,
+          (feed) => feed
+            ..prop(thermo, 5, e(42)) // no Stage has the value 42 (e.g. a C++ bit flag)
+            ..prop(thermo, 4, d(25))
+            ..result(call, value: d(3)));
+      expect(await sum.timeout(const Duration(seconds: 1)), 3.0);
+      expect(t.roomTemp.value, 25.0);
+      expect(stage.hasValue, isFalse); // the bad record was skipped as a whole
+      expect(errors, hasLength(1));
+      expect(errors.single.exception, isA<BindProtocolException>());
+
+      push(f, (feed) => feed.prop(thermo, 5, e(1)));
+      expect(stage.value, Stage.low);
+      push(f, (feed) => feed.prop(thermo, 5, e(42)));
+      expect(stage.value, Stage.low); // keeps the last good value
+    });
+
+    test('a result whose value cannot be decoded fails just that call', () async {
+      final f = await boot();
+      final bad = Thermo.instance.add(1, 2);
+      final good = Thermo.instance.add(2, 2);
+      final [badCall, goodCall] = [for (final c in f.invokes) c.id];
+      push(
+          f,
+          (feed) => feed
+            ..result(badCall, value: (w) => w.tag(77))
+            ..result(goodCall, value: d(4)));
+      await expectLater(bad.timeout(const Duration(seconds: 1)), throwsA(isA<BindProtocolException>()));
+      expect(await good.timeout(const Duration(seconds: 1)), 4.0);
+    });
+
+    test('a list operation that cannot be decoded leaves the list as it was', () async {
+      final f = await boot();
+      final readings = Thermo.instance.readings;
+      // A struct with the wrong field count, at version 2.
+      push(f, (feed) => feed.listInsert(thermo, 0, 2, 0, (w) => w..beginStruct(1)..stringValue('bad')));
+      expect(readings, isEmpty);
+      expect(errors, hasLength(1));
+      // Version 2 was not consumed, so the real operation 2 still applies.
+      push(f, (feed) => feed.listInsert(thermo, 0, 2, 0, reading('a', 1)));
+      expect(readings.map((r) => r.sensor), ['a']);
+    });
+
+    test('gap resyncs stop when the full state itself cannot be applied', () async {
+      final f = await boot();
+      Thermo.instance.readings; // bound
+      void badFullState(Feed feed) => feed
+        ..resync()
+        ..added(thermo, f.idOf('Thermo'))
+        ..listReset(thermo, 0, 5, [(w) => w..beginStruct(1)..stringValue('bad')]);
+      // Every full state fails to apply, and every later list operation then
+      // sees a version gap: without a cap this resyncs on every change.
+      var afterFive = 0;
+      for (var k = 1; k <= 10; k++) {
+        push(f, badFullState);
+        push(f, (feed) => feed.listInsert(thermo, 0, 6 + k, 0, reading('x', 0)));
+        if (k == 5) afterFive = f.resyncRequests;
+      }
+      expect(f.resyncRequests, afterFive, reason: 'resync requests must stop growing');
+      expect(f.resyncRequests, lessThanOrEqualTo(6));
+
+      // Once a full state applies again, gaps resync as usual.
+      push(
+          f,
+          (feed) => feed
+            ..resync()
+            ..added(thermo, f.idOf('Thermo'))
+            ..listReset(thermo, 0, 20, []));
+      final before = f.resyncRequests;
+      push(f, (feed) => feed.listInsert(thermo, 0, 30, 0, reading('y', 0)));
+      expect(f.resyncRequests, before + 1);
+    });
+  });
 }

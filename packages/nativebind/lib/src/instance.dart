@@ -69,10 +69,11 @@ final class PropSlot {
   }
 
   void applyValue(Object? value, int ack) {
+    final b = bound;
+    b?.$takeRemote(value); // decodes first: throws (e.g. an unknown enum value) before anything changes
     raw = value;
     hasValue = true;
     ackSeq = ack;
-    final b = bound;
     if (b != null) {
       b.$onRemote(valueChanged: true);
       instance.runtime.markDirty(b);
@@ -106,18 +107,20 @@ final class ListSlot {
   }
 
   void reset(int v, List<Object?> next) {
+    bound?.$reset(next); // decodes every item first: throws before anything changes
     version = v;
     items = List<Object?>.of(next);
-    bound?.$reset(items);
     _dirty();
   }
 
   /// Applies an operation. Returns false on a version gap (resync needed).
+  /// [op] must throw before changing anything; the version only advances
+  /// once it succeeded, so a failed operation shows up as a gap later.
   bool apply(int v, void Function(List<Object?> items, BoundList<Object?>? typed) op) {
     if (v <= version) return true; // already contained in a reset
     if (v != version + 1) return false;
-    version = v;
     op(items, bound);
+    version = v;
     _dirty();
     return true;
   }
