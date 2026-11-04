@@ -719,10 +719,12 @@ nativebind::setGuard([](const nativebind::GuardRequest& r) -> std::string {
 ```
 
 The guard returns an empty string to allow, or the reason it refuses (Dart
-gets a `BindAccessDenied` with it). It runs on the calling thread with runtime
-locks held: keep it fast, only read state (an atomic, as above), and never
-call into nativebind from it. Without a guard, writes are allowed and
-`NATIVEBIND_INVOKE_AS` methods are refused: it fails closed.
+gets a `BindAccessDenied` with it). It runs with no runtime lock held, so it
+may read state from other modules (`nativebind::property<T>`, a typed
+reference): for writes on the Flutter UI thread, for `NATIVEBIND_INVOKE_AS`
+calls on the nativebind thread. Keep it fast, since the UI waits for it.
+Without a guard, writes are allowed and `NATIVEBIND_INVOKE_AS` methods are
+refused: it fails closed.
 
 To let the UI show a lock or ask for a login *before* a write fails, mirror the
 policy in Dart:

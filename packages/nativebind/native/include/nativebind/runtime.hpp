@@ -86,9 +86,10 @@ struct GuardRequest {
 /// Access policy for UI writes and invokes: returns an empty string to allow,
 /// or the reason it is denied (Dart receives a BindAccessDenied with it).
 ///
-/// It runs on the calling thread with the runtime locked, before every UI write
-/// and every NATIVEBIND_INVOKE_AS call: keep it fast and only read state (an
-/// atomic user role, say); never call nativebind from it.
+/// It runs before every UI write (on the calling thread, Flutter's UI thread)
+/// and every NATIVEBIND_INVOKE_AS call (on the nativebind thread), with no
+/// runtime lock held: it may read other modules' state (property<T>, typed
+/// references), but keep it fast, since the caller waits for it.
 using Guard = std::function<std::string(const GuardRequest&)>;
 
 /// Installs the guard (one at a time; null removes it). stop() removes it.
