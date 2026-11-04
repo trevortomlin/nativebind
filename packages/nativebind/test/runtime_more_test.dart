@@ -170,6 +170,25 @@ void main() {
     expect(Zone.instances.value.map((z) => z.key), [1, 2]);
   });
 
+  test('a bound slot keeps no second copy of its value or items', () async {
+    final f = await boot();
+    final sp = Thermo.instance.setpoint;
+    expect(sp.value, 21.5);
+    final list = Thermo.instance.readings;
+    push(f, (feed) {
+      feed
+        ..prop(thermo, 0, d(22))
+        ..listInsert(thermo, 0, 2, 0, reading('a', 1))
+        ..listInsert(thermo, 0, 3, 1, reading('b', 2));
+    });
+    expect(sp.value, 22);
+    expect(list.map((r) => r.sensor), ['a', 'b']);
+    // The typed objects hold the state; the slots keep only what nothing
+    // has bound to yet.
+    expect(sp.$slot.raw, isNull);
+    expect(list.$slot.items, isEmpty);
+  });
+
   test('an instance re-added with a new handle gets a fresh proxy', () async {
     final f = await boot();
     push(f, (feed) => feed..added(10, f.idOf('Zone'), key: 4));

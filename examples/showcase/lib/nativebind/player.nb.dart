@@ -92,6 +92,13 @@ final class Track {
       $p.durationCodec.encode(w, v.length);
       $p.boolCodec.encode(w, v.liked);
     },
+    read: (r) => Track(
+      id: $p.intCodec.read(r),
+      title: $p.stringCodec.read(r),
+      artist: $p.stringCodec.read(r),
+      length: $p.durationCodec.read(r),
+      liked: $p.boolCodec.read(r),
+    ),
   );
 }
 

@@ -302,6 +302,12 @@ class DartEmitter {
       _l('      ${codecOf(f.field.type)}.encode(w, v.${f.dart});');
     }
     _l('    },');
+    // Arguments are evaluated in order, so this reads the fields in order.
+    _l('    read: (r) => $name(');
+    for (final f in fields) {
+      _l('      ${f.dart}: ${codecOf(f.field.type)}.read(r),');
+    }
+    _l('    ),');
     _l('  );');
     _l('}');
   }

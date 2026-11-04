@@ -65,6 +65,9 @@ final class DeviceDuration {
     encode: (w, v) {
       $p.intCodec.encode(w, v.ticks);
     },
+    read: (r) => DeviceDuration(
+      ticks: $p.intCodec.read(r),
+    ),
   );
 }
 
@@ -112,6 +115,10 @@ final class Pt {
       $p.intCodec.encode(w, v.hashCode_);
       $p.doubleCodec.encode(w, v.x);
     },
+    read: (r) => Pt(
+      hashCode_: $p.intCodec.read(r),
+      x: $p.doubleCodec.read(r),
+    ),
   );
 }
 

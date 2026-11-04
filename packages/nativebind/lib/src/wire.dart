@@ -191,6 +191,12 @@ final class WireReader {
     return _bytes[_pos++];
   }
 
+  /// The next byte (a value's tag), without consuming it.
+  int peek() {
+    _need(1);
+    return _bytes[_pos];
+  }
+
   int i8() {
     _need(1);
     return _data.getInt8(_pos++);

@@ -7,6 +7,7 @@ import 'meta.dart';
 import 'module.dart';
 import 'runtime.dart';
 import 'values.dart';
+import 'wire.dart';
 
 final class Instance {
   Instance(this.runtime, this.handle, this.typeId, this.key, this.type);
@@ -55,6 +56,9 @@ final class PropSlot {
 
   final Instance instance;
   final int index;
+
+  /// The value as [WireReader.value] decodes it, kept only until a
+  /// [BoundValue] binds: from then on the typed value is the only copy.
   Object? raw;
   bool hasValue = false;
   int ackSeq = 0;
@@ -67,13 +71,18 @@ final class PropSlot {
   void bind(BoundValue<Object?> v) {
     if (bound != null) throw StateError('${instance.typeName}.$name is bound twice');
     bound = v;
+    raw = null;
   }
 
-  void applyValue(Object? value, int ack) {
+  /// Applies a Prop record whose value [r] is positioned at.
+  void applyValue(WireReader r, int ack) {
     instance.runtime.observeAck(ack);
     final b = bound;
-    b?.$takeRemote(value); // decodes first: throws (e.g. an unknown enum value) before anything changes
-    raw = value;
+    if (b != null) {
+      b.$readRemote(r); // decodes first: throws (e.g. an unknown enum value) before anything changes
+    } else {
+      raw = r.value();
+    }
     hasValue = true;
     ackSeq = ack;
     if (b != null) {
@@ -93,35 +102,72 @@ final class PropSlot {
   }
 }
 
-/// Raw list state plus version, mirrored from C++.
+/// A list's version, mirrored from C++, and its items until a [BoundList]
+/// binds (from then on the typed list is the only copy).
 final class ListSlot {
   ListSlot(this.instance, this.index);
 
   final Instance instance;
   final int index;
   int version = 0;
-  List<Object?> items = [];
+  List<Object?> _items = [];
   BoundList<Object?>? bound;
+
+  /// The items as [WireReader.value] decodes them; empty once bound.
+  List<Object?> get items => _items;
+
+  int get length => bound?.length ?? _items.length;
 
   void bind(BoundList<Object?> l) {
     if (bound != null) throw StateError('${instance.typeName} list #$index is bound twice');
     bound = l;
+    _items = const [];
   }
 
-  void reset(int v, List<Object?> next) {
-    bound?.$reset(next); // decodes every item first: throws before anything changes
+  /// Applies a ListReset record: [count] items follow in [r].
+  void reset(int v, WireReader r, int count) {
+    final b = bound;
+    if (b != null) {
+      b.$resetFrom(r, count); // decodes every item first: throws before anything changes
+    } else {
+      _items = List<Object?>.generate(count, (_) => r.value());
+    }
     version = v;
-    items = List<Object?>.of(next);
     _dirty();
   }
+
+  bool insert(int v, int at, WireReader r) => _apply(v, () {
+        RangeError.checkValueInInterval(at, 0, length, 'index');
+        final b = bound;
+        b != null ? b.$insertFrom(at, r) : _items.insert(at, r.value());
+      });
+
+  bool remove(int v, int at, int count) => _apply(v, () {
+        RangeError.checkValidRange(at, at + count, length);
+        final b = bound;
+        b != null ? b.$remove(at, count) : _items.removeRange(at, at + count);
+      });
+
+  bool update(int v, int at, WireReader r) => _apply(v, () {
+        RangeError.checkValidIndex(at, null, 'index', length);
+        final b = bound;
+        b != null ? b.$updateFrom(at, r) : _items[at] = r.value();
+      });
+
+  bool move(int v, int from, int to) => _apply(v, () {
+        RangeError.checkValidIndex(from, null, 'from', length);
+        RangeError.checkValidIndex(to, null, 'to', length);
+        final b = bound;
+        b != null ? b.$move(from, to) : _items.insert(to, _items.removeAt(from));
+      });
 
   /// Applies an operation. Returns false on a version gap (resync needed).
   /// [op] must throw before changing anything; the version only advances
   /// once it succeeded, so a failed operation shows up as a gap later.
-  bool apply(int v, void Function(List<Object?> items, BoundList<Object?>? typed) op) {
+  bool _apply(int v, void Function() op) {
     if (v <= version) return true; // already contained in a reset
     if (v != version + 1) return false;
-    op(items, bound);
+    op();
     version = v;
     _dirty();
     return true;

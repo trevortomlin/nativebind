@@ -75,6 +75,11 @@ final class Reading {
       $p.doubleCodec.encode(w, v.value);
       _$list_int.encode(w, v.history);
     },
+    read: (r) => Reading(
+      sensor: $p.stringCodec.read(r),
+      value: $p.doubleCodec.read(r),
+      history: _$list_int.read(r),
+    ),
   );
 }
 
